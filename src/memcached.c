@@ -495,6 +495,18 @@ static int memcached_read (user_data_t *user_data)
     {
       submit_derive ("memcached_ops", "misses", atoll (fields[2]), st);
     }
+    else if (FIELD_IS ("cas_hits"))
+    {
+      submit_derive ("memcached_ops", "cas_hits", atoll (fields[2]), st);
+    }
+    else if (FIELD_IS ("cas_misses"))
+    {
+      submit_derive ("memcached_ops", "cas_misses", atoll (fields[2]), st);
+    }
+    else if (FIELD_IS ("cas_badvalue"))
+    {
+      submit_derive ("memcached_ops", "cas_badvalue", atoll (fields[2]), st);
+    }
     else if (FIELD_IS ("evictions"))
     {
       submit_derive ("memcached_ops", "evictions", atoll (fields[2]), st);
