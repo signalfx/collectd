@@ -1384,11 +1384,13 @@ int plugin_register_flush (const char *name,
 		ud.data = cb;
 		ud.free_func = plugin_flush_timeout_callback_free;
 
+		struct timespec ts = { 0 };
+		CDTIME_T_TO_TIMESPEC (ctx.flush_interval, &ts);
 		status = plugin_register_complex_read (
 			/* group     = */ "flush",
 			/* name      = */ flush_name,
 			/* callback  = */ plugin_flush_timeout_callback,
-			/* interval  = */ ctx.flush_interval,
+			/* interval  = */ &ts,
 			/* user data = */ &ud);
 
 		sfree(flush_name);
