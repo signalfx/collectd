@@ -2335,6 +2335,13 @@ fi
 %doc contrib/
 
 %changelog
+* Thu Jan 07 2016 SignalFx <support+rpm@signalfx.com> 5.5.0-sfx7
+- Log http error codes other than 200
+- plugin.c: emit log message when plugin loading succeeds
+- Support for call the flush callback at regular intervals using the read plugin callback.
+- add notifications to write_http
+- increase DATA_MAX_NAME_LEN from to 1024
+
 * Wed May 27 2015 Marc Fournier <marc.fournier@camptocamp.com> 5.5.0-1
 - New upstream version
 - New plugins enabled by default: ceph, drbd, log_logstash, write_tsdb, smart,
