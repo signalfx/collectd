@@ -161,6 +161,7 @@
 %define with_thermal 0%{!?_without_thermal:1}
 %define with_threshold 0%{!?_without_threshold:1}
 %define with_turbostat 0%{!?_without_turbostat:0%{?_has_asm_msr_index}}
+%define with_unixfifo 0%{!?_without_unixfifo:1}
 %define with_unixsock 0%{!?_without_unixsock:1}
 %define with_uptime 0%{!?_without_uptime:1}
 %define with_users 0%{!?_without_users:1}
@@ -214,6 +215,8 @@
 %define with_write_mongodb 0%{!?_without_write_mongodb:0}
 # plugin xmms disabled, requires xmms
 %define with_xmms 0%{!?_without_xmms:0}
+# plugin zone disabled, requires Solaris
+%define with_zone 0%{!?_without_zone:0}
 
 Summary:	statistics collection and monitoring daemon
 Name:		collectd
@@ -1457,6 +1460,12 @@ Collectd utilities
 %define _with_turbostat --disable-turbostat
 %endif
 
+%if %{with_unixfifo}
+%define _with_unixfifo --enable-unixfifo
+%else
+%define _with_unixfifo --disable-unixfifo
+%endif
+
 %if %{with_unixsock}
 %define _with_unixsock --enable-unixsock
 %else
@@ -1571,6 +1580,12 @@ Collectd utilities
 %define _with_zfs_arc --disable-zfs_arc
 %endif
 
+%if %{with_zone}
+%define _with_zone --enable-zone
+%else
+%define _with_zone --disable-zone
+%endif
+
 %if %{with_zookeeper}
 %define _with_zookeeper --enable-zookeeper
 %else
@@ -1672,6 +1687,7 @@ Collectd utilities
 	%{?_with_write_redis} \
 	%{?_with_xmms} \
 	%{?_with_zfs_arc} \
+	%{?_with_zone} \
 	%{?_with_zookeeper} \
 	%{?_with_irq} \
 	%{?_with_load} \
@@ -1703,6 +1719,7 @@ Collectd utilities
 	%{?_with_thermal} \
 	%{?_with_threshold} \
 	%{?_with_turbostat} \
+	%{?_with_unixfifo} \
 	%{?_with_unixsock} \
 	%{?_with_uptime} \
 	%{?_with_users} \
@@ -1840,6 +1857,7 @@ fi
 %{_mandir}/man5/collectd-email.5*
 %{_mandir}/man5/collectd-exec.5*
 %{_mandir}/man5/collectd-threshold.5*
+%{_mandir}/man5/collectd-unixfifo.5*
 %{_mandir}/man5/collectd-unixsock.5*
 %{_mandir}/man5/collectd.conf.5*
 %{_mandir}/man5/types.db.5*
@@ -2008,6 +2026,9 @@ fi
 %endif
 %if %{with_turbostat}
 %{_libdir}/%{name}/turbostat.so
+%endif
+%if %{with_unixfifo}
+%{_libdir}/%{name}/unixfifo.so
 %endif
 %if %{with_unixsock}
 %{_libdir}/%{name}/unixsock.so
@@ -2335,13 +2356,10 @@ fi
 %doc contrib/
 
 %changelog
-* Thu Jan 07 2016 SignalFx <support+rpm@signalfx.com> 5.5.0-sfx7
-- Log http error codes other than 200
-- plugin.c: emit log message when plugin loading succeeds
-- Support for call the flush callback at regular intervals using the read plugin callback.
-- add notifications to write_http
-- increase DATA_MAX_NAME_LEN from to 1024
-
+#* TODO: next feature release changelog
+#- New upstream version
+#- New plugins disabled by default: zone
+#
 * Wed May 27 2015 Marc Fournier <marc.fournier@camptocamp.com> 5.5.0-1
 - New upstream version
 - New plugins enabled by default: ceph, drbd, log_logstash, write_tsdb, smart,

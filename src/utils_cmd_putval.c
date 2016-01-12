@@ -36,26 +36,11 @@
             char errbuf[1024]; \
             WARNING ("handle_putval: failed to write to socket #%i: %s", \
                     fileno (fh), sstrerror (errno, errbuf, sizeof (errbuf))); \
+            sfree (vl.values); \
             return -1; \
         } \
         fflush(fh); \
     } while (0)
-
-static int dispatch_values (const data_set_t *ds, value_list_t *vl,
-	       	FILE *fh, char *buffer)
-{
-	int status;
-
-	status = parse_values (buffer, vl, ds);
-	if (status != 0)
-	{
-		print_to_socket (fh, "-1 Parsing the values string failed.\n");
-		return (-1);
-	}
-
-	plugin_dispatch_values (vl);
-	return (0);
-} /* int dispatch_values */
 
 static int set_option (value_list_t *vl, const char *key, const char *value)
 {
@@ -81,6 +66,8 @@ static int set_option (value_list_t *vl, const char *key, const char *value)
 	return (0);
 } /* int parse_option */
 
+
+/* fh can be NULL */
 int handle_putval (FILE *fh, char *buffer)
 {
 	char *command;
@@ -97,31 +84,52 @@ int handle_putval (FILE *fh, char *buffer)
 
 	const data_set_t *ds;
 	value_list_t vl = VALUE_LIST_INIT;
+	vl.values = NULL;
 
 	DEBUG ("utils_cmd_putval: handle_putval (fh = %p, buffer = %s);",
 			(void *) fh, buffer);
 
 	command = NULL;
+    
 	status = parse_string (&buffer, &command);
 	if (status != 0)
 	{
-		print_to_socket (fh, "-1 Cannot parse command.\n");
+        if (fh)
+        {
+            print_to_socket (fh, "-1 Cannot parse command.\n");
+        } else {
+            ERROR ("handle_putval: Cannot parse command.");
+        }
+        
 		return (-1);
 	}
 	assert (command != NULL);
 
-	if (strcasecmp ("PUTVAL", command) != 0)
+    if (strcasecmp ("PUTVAL", command) != 0)
 	{
-		print_to_socket (fh, "-1 Unexpected command: `%s'.\n", command);
-		return (-1);
+        if (fh)
+        {
+            print_to_socket (fh, "-1 Unexpected command: `%s'.\n", command);
+        } else {
+            ERROR ("handle_putval: Unexpected command: `%s'", command);
+        }
+
+        return (-1);
 	}
 
 	identifier = NULL;
 	status = parse_string (&buffer, &identifier);
-	if (status != 0)
+
+    if (status != 0)
 	{
-		print_to_socket (fh, "-1 Cannot parse identifier.\n");
-		return (-1);
+        if (fh)
+        {
+            print_to_socket (fh, "-1 Cannot parse identifier.\n");
+        } else {
+            ERROR ("handle_putval: Cannot parse identifier");
+        }
+		
+        return (-1);
 	}
 	assert (identifier != NULL);
 
@@ -132,12 +140,18 @@ int handle_putval (FILE *fh, char *buffer)
 	status = parse_identifier (identifier_copy, &hostname,
 			&plugin, &plugin_instance,
 			&type, &type_instance);
-	if (status != 0)
+
+    if (status != 0)
 	{
-		DEBUG ("handle_putval: Cannot parse identifier `%s'.",
-				identifier);
-		print_to_socket (fh, "-1 Cannot parse identifier `%s'.\n",
-				identifier);
+		DEBUG ("handle_putval: Cannot parse identifier `%s'.", identifier);
+        
+        if (fh)
+        {
+            print_to_socket (fh, "-1 Cannot parse identifier `%s'.\n", identifier);
+        } else {
+            ERROR ("handle_putval: Cannot parse identifier `%s'.", identifier);
+        }
+        
 		sfree (identifier_copy);
 		return (-1);
 	}
@@ -149,7 +163,13 @@ int handle_putval (FILE *fh, char *buffer)
 			|| ((type_instance != NULL)
 				&& (strlen (type_instance) >= sizeof (vl.type_instance))))
 	{
-		print_to_socket (fh, "-1 Identifier too long.\n");
+        if (fh)
+        {
+            print_to_socket (fh, "-1 Identifier too long.\n");
+        } else {
+            ERROR ("handle_putval: Identifier too long.");
+        }
+
 		sfree (identifier_copy);
 		return (-1);
 	}
@@ -164,8 +184,14 @@ int handle_putval (FILE *fh, char *buffer)
 
 	ds = plugin_get_ds (type);
 	if (ds == NULL) {
-		print_to_socket (fh, "-1 Type `%s' isn't defined.\n", type);
-		sfree (identifier_copy);
+        if (fh)
+        {
+            print_to_socket (fh, "-1 Type `%s' isn't defined.\n", type);
+        } else {
+            ERROR ("handle_putval: Type `%s' isn't defined.\n", type);
+        }
+
+        sfree (identifier_copy);
 		return (-1);
 	}
 
@@ -179,7 +205,13 @@ int handle_putval (FILE *fh, char *buffer)
 	vl.values = (value_t *) malloc (vl.values_len * sizeof (value_t));
 	if (vl.values == NULL)
 	{
-		print_to_socket (fh, "-1 malloc failed.\n");
+        if (fh)
+        {
+            print_to_socket (fh, "-1 malloc failed.\n");
+        } else {
+            ERROR ("handle_putval: malloc failed");
+        }
+        
 		return (-1);
 	}
 
@@ -195,7 +227,13 @@ int handle_putval (FILE *fh, char *buffer)
 		{
 			/* parse_option failed, buffer has been modified.
 			 * => we need to abort */
-			print_to_socket (fh, "-1 Misformatted option.\n");
+            if (fh)
+            {
+                print_to_socket (fh, "-1 Misformatted option.\n");
+            } else {
+                ERROR ("handle_putval: Misformatted option.");
+            }
+			sfree (vl.values);
 			return (-1);
 		}
 		else if (status == 0)
@@ -211,27 +249,44 @@ int handle_putval (FILE *fh, char *buffer)
 		status = parse_string (&buffer, &string);
 		if (status != 0)
 		{
-			print_to_socket (fh, "-1 Misformatted value.\n");
+            if (fh)
+            {
+                print_to_socket (fh, "-1 Misformatted value.\n");
+            } else {
+                ERROR ("handle_putval: Misformatted value.");
+            }
+			sfree (vl.values);
 			return (-1);
 		}
 		assert (string != NULL);
 
-		status = dispatch_values (ds, &vl, fh, string);
+		status = parse_values (string, &vl, ds);
 		if (status != 0)
 		{
-			/* An error has already been printed. */
+            if (fh)
+            {
+                print_to_socket (fh, "-1 Parsing the values string failed.\n");
+            } else {
+                ERROR ("handle_putval: Parsing the values string failed.");
+            }
+            sfree (vl.values);
 			return (-1);
 		}
+
+		plugin_dispatch_values (&vl);
 		values_submitted++;
 	} /* while (*buffer != 0) */
 	/* Done parsing the options. */
 
-	print_to_socket (fh, "0 Success: %i %s been dispatched.\n",
-			values_submitted,
-			(values_submitted == 1) ? "value has" : "values have");
+    if (fh)
+    {
+        print_to_socket (fh, "0 Success: %i %s been dispatched.\n",
+                         values_submitted,
+                         (values_submitted == 1) ? "value has" : "values have");
 
-	sfree (vl.values); 
-
+    }
+    
+	sfree (vl.values);
 	return (0);
 } /* int handle_putval */
 
