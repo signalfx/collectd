@@ -500,7 +500,6 @@ static int lcc_open_netsocket (lcc_connection_t *c, /* {{{ */
     if (fd < 0)
     {
       status = errno;
-      fd = -1;
       continue;
     }
 
@@ -509,7 +508,6 @@ static int lcc_open_netsocket (lcc_connection_t *c, /* {{{ */
     {
       status = errno;
       close (fd);
-      fd = -1;
       continue;
     }
 
@@ -518,7 +516,6 @@ static int lcc_open_netsocket (lcc_connection_t *c, /* {{{ */
     {
       status = errno;
       close (fd);
-      fd = -1;
       continue;
     }
 
@@ -529,9 +526,11 @@ static int lcc_open_netsocket (lcc_connection_t *c, /* {{{ */
   if (status != 0)
   {
     lcc_set_errno (c, status);
+    freeaddrinfo (ai_res);
     return (-1);
   }
 
+  freeaddrinfo (ai_res);
   return (0);
 } /* }}} int lcc_open_netsocket */
 

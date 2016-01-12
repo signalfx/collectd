@@ -199,11 +199,11 @@ static char *camqp_strerror (camqp_config_t *conf, /* {{{ */
     switch (r.reply_type)
     {
         case AMQP_RESPONSE_NORMAL:
-            sstrncpy (buffer, "Success", sizeof (buffer));
+            sstrncpy (buffer, "Success", buffer_size);
             break;
 
         case AMQP_RESPONSE_NONE:
-            sstrncpy (buffer, "Missing RPC reply type", sizeof (buffer));
+            sstrncpy (buffer, "Missing RPC reply type", buffer_size);
             break;
 
         case AMQP_RESPONSE_LIBRARY_EXCEPTION:
@@ -215,7 +215,7 @@ static char *camqp_strerror (camqp_config_t *conf, /* {{{ */
                 return (sstrerror (r.library_error, buffer, buffer_size));
 #endif
             else
-                sstrncpy (buffer, "End of stream", sizeof (buffer));
+                sstrncpy (buffer, "End of stream", buffer_size);
             break;
 
         case AMQP_RESPONSE_SERVER_EXCEPTION:
@@ -716,7 +716,7 @@ static void *camqp_subscribe_thread (void *user_data) /* {{{ */
             continue;
         }
 
-        status = camqp_read_header (conf);
+        camqp_read_header (conf);
 
         amqp_maybe_release_buffers (conf->connection);
     } /* while (subscriber_threads_running) */

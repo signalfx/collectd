@@ -27,7 +27,7 @@
 
 #include <netdb.h>
 
-#include <modbus/modbus.h>
+#include <modbus.h>
 
 #ifndef LIBMODBUS_VERSION_CHECK
 /* Assume version 2.0.3 */
@@ -426,7 +426,7 @@ static int mb_read_data (mb_host_t *host, mb_slave_t *slave, /* {{{ */
   uint16_t values[2];
   int values_num;
   const data_set_t *ds;
-  int status;
+  int status = 0;
 
   if ((host == NULL) || (slave == NULL) || (data == NULL))
     return (EINVAL);
@@ -463,7 +463,6 @@ static int mb_read_data (mb_host_t *host, mb_slave_t *slave, /* {{{ */
   else
     values_num = 1;
 
-  status = 0;
   if (host->connection == NULL)
   {
     status = EBADF;
@@ -733,7 +732,6 @@ static int mb_config_add_data (oconfig_item_t *ci) /* {{{ */
   for (i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *child = ci->children + i;
-    status = 0;
 
     if (strcasecmp ("Type", child->key) == 0)
       status = cf_util_get_string_buffer (child,
@@ -894,7 +892,6 @@ static int mb_config_add_slave (mb_host_t *host, oconfig_item_t *ci) /* {{{ */
   for (i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *child = ci->children + i;
-    status = 0;
 
     if (strcasecmp ("Instance", child->key) == 0)
       status = cf_util_get_string_buffer (child,
@@ -945,9 +942,15 @@ static int mb_config_add_host (oconfig_item_t *ci) /* {{{ */
 
   status = cf_util_get_string_buffer (ci, host->host, sizeof (host->host));
   if (status != 0)
+  {
+    sfree (host);
     return (status);
+  }
   if (host->host[0] == 0)
+  {
+    sfree (host);
     return (EINVAL);
+  }
 
   for (i = 0; i < ci->children_num; i++)
   {

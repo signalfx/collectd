@@ -224,7 +224,6 @@ static int ctail_config_add_file (oconfig_item_t *ci)
   cdtime_t interval = 0;
   char *plugin_instance = NULL;
   int num_matches = 0;
-  int status;
   int i;
 
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING))
@@ -237,14 +236,14 @@ static int ctail_config_add_file (oconfig_item_t *ci)
   if (tm == NULL)
   {
     ERROR ("tail plugin: tail_match_create (%s) failed.",
-	ci->values[0].value.string);
+        ci->values[0].value.string);
     return (-1);
   }
 
-  status = 0;
   for (i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *option = ci->children + i;
+    int status = 0;
 
     if (strcasecmp ("Instance", option->key) == 0)
       status = cf_util_get_string (option, &plugin_instance);
@@ -254,7 +253,7 @@ static int ctail_config_add_file (oconfig_item_t *ci)
     {
       status = ctail_config_add_match (tm, plugin_instance, option, interval);
       if (status == 0)
-	num_matches++;
+        num_matches++;
       /* Be mild with failed matches.. */
       status = 0;
     }
@@ -267,10 +266,12 @@ static int ctail_config_add_file (oconfig_item_t *ci)
       break;
   } /* for (i = 0; i < ci->children_num; i++) */
 
+  sfree (plugin_instance);
+
   if (num_matches == 0)
   {
     ERROR ("tail plugin: No (valid) matches found for file `%s'.",
-	ci->values[0].value.string);
+        ci->values[0].value.string);
     tail_match_destroy (tm);
     return (-1);
   }
@@ -279,7 +280,7 @@ static int ctail_config_add_file (oconfig_item_t *ci)
     cu_tail_match_t **temp;
 
     temp = (cu_tail_match_t **) realloc (tail_match_list,
-	sizeof (cu_tail_match_t *) * (tail_match_list_num + 1));
+        sizeof (cu_tail_match_t *) * (tail_match_list_num + 1));
     if (temp == NULL)
     {
       ERROR ("tail plugin: realloc failed.");
@@ -341,6 +342,8 @@ static int ctail_init (void)
     WARNING ("tail plugin: File list is empty. Returning an error.");
     return (-1);
   }
+
+  memset(&ud, '\0', sizeof(ud));
 
   for (i = 0; i < tail_match_list_num; i++)
   {

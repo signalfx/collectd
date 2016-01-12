@@ -197,8 +197,10 @@ static int change_basedir (const char *orig_dir)
 	while ((dirlen > 0) && (dir[dirlen - 1] == '/'))
 		dir[--dirlen] = '\0';
 
-	if (dirlen <= 0)
+	if (dirlen <= 0) {
+		free (dir);
 		return (-1);
+	}
 
 	status = chdir (dir);
 	if (status == 0)
@@ -270,7 +272,7 @@ static void update_kstat (void)
  */
 static void exit_usage (int status)
 {
-	printf ("Usage: "PACKAGE" [OPTIONS]\n\n"
+	printf ("Usage: "PACKAGE_NAME" [OPTIONS]\n\n"
 
 			"Available options:\n"
 			"  General:\n"
@@ -289,7 +291,7 @@ static void exit_usage (int status)
 			"  PID file          "PIDFILE"\n"
 			"  Plugin directory  "PLUGINDIR"\n"
 			"  Data directory    "PKGLOCALSTATEDIR"\n"
-			"\n"PACKAGE" "VERSION", http://collectd.org/\n"
+			"\n"PACKAGE_NAME" "PACKAGE_VERSION", http://collectd.org/\n"
 			"by Florian octo Forster <octo@collectd.org>\n"
 			"for contributions see `AUTHORS'\n");
 	exit (status);
@@ -300,6 +302,11 @@ static int do_init (void)
 #if HAVE_SETLOCALE
 	if (setlocale (LC_NUMERIC, COLLECTD_LOCALE) == NULL)
 		WARNING ("setlocale (\"%s\") failed.", COLLECTD_LOCALE);
+
+	/* Update the environment, so that libraries that are calling
+	 * setlocale(LC_NUMERIC, "") don't accidentally revert these changes. */
+	unsetenv ("LC_ALL");
+	setenv ("LC_NUMERIC", COLLECTD_LOCALE, /* overwrite = */ 1);
 #endif
 
 #if HAVE_LIBKSTAT
@@ -408,8 +415,9 @@ static int pidfile_create (void)
 static int pidfile_remove (void)
 {
 	const char *file = global_option_get ("PIDFile");
+	if (file == NULL)
+		return 0;
 
-	DEBUG ("unlink (%s)", (file != NULL) ? file : "<null>");
 	return (unlink (file));
 } /* static int pidfile_remove (const char *file) */
 #endif /* COLLECT_DAEMON */

@@ -402,7 +402,6 @@ static int csnmp_config_add_data (oconfig_item_t *ci)
   for (i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *option = ci->children + i;
-    status = 0;
 
     if (strcasecmp ("Type", option->key) == 0)
       status = cf_util_get_string(option, &dd->type);
@@ -657,7 +656,10 @@ static int csnmp_config_add_host (oconfig_item_t *ci)
 
   status = cf_util_get_string(ci, &hd->name);
   if (status != 0)
+  {
+    sfree (hd);
     return status;
+  }
 
   hd->sess_handle = NULL;
   hd->interval = 0;
@@ -929,8 +931,7 @@ static value_t csnmp_value_list_to_value (struct variable_list *vl, int type,
     tmp_unsigned = (uint32_t) *vl->val.integer;
     tmp_signed = (int32_t) *vl->val.integer;
 
-    if ((vl->type == ASN_INTEGER)
-        || (vl->type == ASN_GAUGE))
+    if (vl->type == ASN_INTEGER)
       prefer_signed = 1;
 
     DEBUG ("snmp plugin: Parsed int32 value is %"PRIu64".", tmp_unsigned);
@@ -1236,16 +1237,17 @@ static int csnmp_dispatch_table (host_definition_t *host, data_definition_t *dat
     return (-1);
   }
   assert (ds->ds_num == data->values_len);
+  assert (data->values_len > 0);
 
   instance_list_ptr = instance_list;
 
-  value_table_ptr = malloc (sizeof (*value_table_ptr) * data->values_len);
+  value_table_ptr = calloc ((size_t) data->values_len, sizeof (*value_table_ptr));
   if (value_table_ptr == NULL)
     return (-1);
   for (i = 0; i < data->values_len; i++)
     value_table_ptr[i] = value_table[i];
 
-  vl.values_len = ds->ds_num;
+  vl.values_len = data->values_len;
   vl.values = malloc (sizeof (*vl.values) * vl.values_len);
   if (vl.values == NULL)
   {
@@ -1377,7 +1379,7 @@ static int csnmp_dispatch_table (host_definition_t *host, data_definition_t *dat
 static int csnmp_read_table (host_definition_t *host, data_definition_t *data)
 {
   struct snmp_pdu *req;
-  struct snmp_pdu *res;
+  struct snmp_pdu *res = NULL;
   struct variable_list *vb;
 
   const data_set_t *ds;
@@ -1424,6 +1426,7 @@ static int csnmp_read_table (host_definition_t *host, data_definition_t *data)
         data->type, ds->ds_num, data->values_len);
     return (-1);
   }
+  assert (data->values_len > 0);
 
   /* We need a copy of all the OIDs, because GETNEXT will destroy them. */
   memcpy (oid_list, data->values, data->values_len * sizeof (oid_t));
@@ -1523,7 +1526,7 @@ static int csnmp_read_table (host_definition_t *host, data_definition_t *data)
     for (vb = res->variables, i = 0; (vb != NULL); vb = vb->next_variable, i++)
     {
       /* Calculate value index from todo list */
-      while (!oid_list_todo[i] && (i < oid_list_len))
+      while ((i < oid_list_len) && !oid_list_todo[i])
         i++;
 
       /* An instance is configured and the res variable we process is the
@@ -1670,7 +1673,7 @@ static int csnmp_read_value (host_definition_t *host, data_definition_t *data)
 
   if (host->sess_handle == NULL)
   {
-    DEBUG ("snmp plugin: csnmp_read_table: host->sess_handle == NULL");
+    DEBUG ("snmp plugin: csnmp_read_value: host->sess_handle == NULL");
     return (-1);
   }
 
@@ -1734,6 +1737,7 @@ static int csnmp_read_value (host_definition_t *host, data_definition_t *data)
     res = NULL;
 
     sfree (errstr);
+    sfree (vl.values);
     csnmp_host_close_session (host);
 
     return (-1);

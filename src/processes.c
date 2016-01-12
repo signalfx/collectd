@@ -280,6 +280,7 @@ static void ps_list_register (const char *name, const char *regexp)
 		{
 			DEBUG ("ProcessMatch: compiling the regular expression \"%s\" failed.", regexp);
 			sfree(new->re);
+			sfree(new);
 			return;
 		}
 	}
@@ -1740,6 +1741,7 @@ static int ps_read (void)
 			continue;
 		}
 
+		memset (&pse, 0, sizeof (pse));
 		pse.id       = pid;
 		pse.age      = 0;
 
@@ -1912,18 +1914,18 @@ static int ps_read (void)
 			pse.io_syscw = -1;
 
 			ps_list_add (procs[i].ki_comm, have_cmdline ? cmdline : NULL, &pse);
-		} /* if ((proc_ptr == NULL) || (proc_ptr->ki_pid != procs[i].ki_pid)) */
 
-		switch (procs[i].ki_stat)
-		{
-			case SSTOP: 	stopped++;	break;
-			case SSLEEP:	sleeping++;	break;
-			case SRUN:	running++;	break;
-			case SIDL:	idle++;		break;
-			case SWAIT:	wait++;		break;
-			case SLOCK:	blocked++;	break;
-			case SZOMB:	zombies++;	break;
-		}
+			switch (procs[i].ki_stat)
+			{
+				case SSTOP:	stopped++;	break;
+				case SSLEEP:	sleeping++;	break;
+				case SRUN:	running++;	break;
+				case SIDL:	idle++;		break;
+				case SWAIT:	wait++;		break;
+				case SLOCK:	blocked++;	break;
+				case SZOMB:	zombies++;	break;
+			}
+		} /* if ((proc_ptr == NULL) || (proc_ptr->ki_pid != procs[i].ki_pid)) */
 	}
 
 	kvm_close(kd);
@@ -2014,6 +2016,7 @@ static int ps_read (void)
 				}
 			} /* if (process has argument list) */
 
+			memset (&pse, 0, sizeof (pse));
 			pse.id       = procs[i].p_pid;
 			pse.age      = 0;
 
@@ -2043,19 +2046,22 @@ static int ps_read (void)
 			pse.io_syscr = -1;
 			pse.io_syscw = -1;
 
-			ps_list_add (procs[i].p_comm, have_cmdline ? cmdline : NULL, &pse);
-		} /* if ((proc_ptr == NULL) || (proc_ptr->p_pid != procs[i].p_pid)) */
+			pse.cswitch_vol = -1;
+			pse.cswitch_invol = -1;
 
-		switch (procs[i].p_stat)
-		{
-			case SSTOP: 	stopped++;	break;
-			case SSLEEP:	sleeping++;	break;
-			case SRUN:	running++;	break;
-			case SIDL:	idle++;		break;
-			case SONPROC:	onproc++;	break;
-			case SDEAD:	dead++;		break;
-			case SZOMB:	zombies++;	break;
-		}
+			ps_list_add (procs[i].p_comm, have_cmdline ? cmdline : NULL, &pse);
+
+			switch (procs[i].p_stat)
+			{
+				case SSTOP:	stopped++;	break;
+				case SSLEEP:	sleeping++;	break;
+				case SRUN:	running++;	break;
+				case SIDL:	idle++;		break;
+				case SONPROC:	onproc++;	break;
+				case SDEAD:	dead++;		break;
+				case SZOMB:	zombies++;	break;
+			}
+		} /* if ((proc_ptr == NULL) || (proc_ptr->p_pid != procs[i].p_pid)) */
 	}
 
 	kvm_close(kd);
@@ -2258,6 +2264,7 @@ static int ps_read (void)
 			continue;
 		}
 
+		memset (&pse, 0, sizeof (pse));
 		pse.id = pid;
 		pse.age = 0;
 
@@ -2283,6 +2290,9 @@ static int ps_read (void)
 		pse.io_wchar = ps.io_wchar;
 		pse.io_syscr = ps.io_syscr;
 		pse.io_syscw = ps.io_syscw;
+
+		pse.cswitch_vol = -1;
+		pse.cswitch_invol = -1;
 
 		switch (state)
 		{

@@ -155,8 +155,16 @@ static int vmem_read (void)
     if (strncmp ("nr_", key, strlen ("nr_")) == 0)
     {
       char *inst = key + strlen ("nr_");
-      value_t value = { .gauge = gauge };
-      submit_one (NULL, "vmpage_number", inst, value);
+      if (strcmp(inst, "dirtied") == 0 || strcmp(inst, "written") == 0)
+      {
+        value_t value = { .derive = counter };
+        submit_one (NULL, "vmpage_action", inst, value);
+      }
+      else
+      {
+        value_t value = { .gauge = gauge };
+        submit_one (NULL, "vmpage_number", inst, value);
+      }
     }
 
     /* 
@@ -219,6 +227,19 @@ static int vmem_read (void)
       value_t value  = { .derive = counter };
       submit_one (inst, "vmpage_action", "refill", value);
     }
+    else if (strncmp ("pgsteal_kswapd_", key, strlen ("pgsteal_kswapd_")) == 0)
+    {
+      char *inst = key + strlen ("pgsteal_kswapd_");
+      value_t value  = { .derive = counter };
+      submit_one (inst, "vmpage_action", "steal_kswapd", value);
+    }
+    else if (strncmp ("pgsteal_direct_", key, strlen ("pgsteal_direct_")) == 0)
+    {
+      char *inst = key + strlen ("pgsteal_direct_");
+      value_t value  = { .derive = counter };
+      submit_one (inst, "vmpage_action", "steal_direct", value);
+    }
+    /* For backwards compatibility (somewhen before 4.2.3) */
     else if (strncmp ("pgsteal_", key, strlen ("pgsteal_")) == 0)
     {
       char *inst = key + strlen ("pgsteal_");

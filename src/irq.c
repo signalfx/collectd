@@ -120,6 +120,7 @@ static int irq_read (void)
 	} else {
 		ERROR ("irq plugin: unable to get CPU count from first line "
 				"of /proc/interrupts");
+		fclose (fh);
 		return (-1);
 	}
 
@@ -153,6 +154,10 @@ static int irq_read (void)
 		/* Check if irq name ends with colon.
 		 * Otherwise it's a header. */
 		if (irq_name[irq_name_len - 1] != ':')
+			continue;
+
+		/* Is it the the ARM fast interrupt (FIQ)? */
+		if (irq_name_len == 4 && (strncmp(irq_name, "FIQ:", 4) == 0))
 			continue;
 
 		irq_name[irq_name_len - 1] = 0;

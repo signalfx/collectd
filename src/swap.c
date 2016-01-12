@@ -281,7 +281,8 @@ static int swap_read_separate (void) /* {{{ */
 		if (total < used)
 			continue;
 
-		swap_submit_usage (path, used, total - used, NULL, NAN);
+		swap_submit_usage (path, used * 1024.0, (total - used) * 1024.0,
+				NULL, NAN);
 	}
 
 	fclose (fh);
@@ -340,8 +341,9 @@ static int swap_read_combined (void) /* {{{ */
 	if (swap_used < 0.0)
 		return (EINVAL);
 
-	swap_submit_usage (NULL, swap_used, swap_free,
-			isnan (swap_cached) ? NULL : "cached", swap_cached);
+	swap_submit_usage (NULL, swap_used * 1024.0, swap_free * 1024.0,
+			isnan (swap_cached) ? NULL : "cached",
+			isnan (swap_cached) ? NAN : swap_cached * 1024.0);
 	return (0);
 } /* }}} int swap_read_combined */
 
@@ -519,10 +521,10 @@ static int swap_read (void) /* {{{ */
                 return (0);
 
 	/* Allocate and initialize the swaptbl_t structure */
-        s = (swaptbl_t *) smalloc (swap_num * sizeof (swapent_t) + sizeof (struct swaptable));
+        s = malloc (swap_num * sizeof (swapent_t) + sizeof (struct swaptable));
         if (s == NULL)
         {
-                ERROR ("swap plugin: smalloc failed.");
+                ERROR ("swap plugin: malloc failed.");
                 return (-1);
         }
 
@@ -532,7 +534,7 @@ static int swap_read (void) /* {{{ */
 	s_paths = calloc (swap_num, PATH_MAX);
 	if (s_paths == NULL)
 	{
-		ERROR ("swap plugin: malloc failed.");
+		ERROR ("swap plugin: calloc failed.");
 		sfree (s);
 		return (-1);
 	}

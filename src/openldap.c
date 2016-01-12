@@ -31,6 +31,11 @@
 #include "plugin.h"
 #include "configfile.h"
 
+#if defined(__APPLE__)
+#pragma clang diagnostic push
+#pragma clang diagnostic warning "-Wdeprecated-declarations"
+#endif
+
 #include <lber.h>
 #include <ldap.h>
 
@@ -604,7 +609,8 @@ static int cldap_config_add (oconfig_item_t *ci) /* {{{ */
 				st->name, st->url);
 			status = -1;
 		}
-		else
+
+		if ((status == 0) && (ludpp->lud_host != NULL))
 		{
 			st->host = strdup (ludpp->lud_host);
 		}
@@ -680,3 +686,7 @@ void module_register (void) /* {{{ */
 	plugin_register_complex_config ("openldap", cldap_config);
 	plugin_register_init ("openldap", cldap_init);
 } /* }}} void module_register */
+
+#if defined(__APPLE__)
+#pragma clang diagnostic pop
+#endif

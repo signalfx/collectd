@@ -516,7 +516,6 @@ static int av2notification_meta (pTHX_ AV *array, notification_meta_t **meta)
 		if (NULL == (tmp = hv_fetch (hash, "value", 5, 0))) {
 			log_warn ("av2notification_meta: Skipping invalid "
 					"meta information.");
-			free ((*m)->name);
 			free (*m);
 			continue;
 		}
@@ -1209,7 +1208,10 @@ static void c_ithread_destructor (void *arg)
 
 	/* the ithread no longer exists */
 	if (NULL == t)
+	{
+		pthread_mutex_unlock (&perl_threads->mutex);
 		return;
+	}
 
 	c_ithread_destroy (ithread);
 
@@ -1650,14 +1652,14 @@ static XS (Collectd_plugin_dispatch_values)
 
 	values = ST (/* stack index = */ 0);
 
+	if (NULL == values)
+		XSRETURN_EMPTY;
+
 	/* Make sure the argument is a hash reference. */
 	if (! (SvROK (values) && (SVt_PVHV == SvTYPE (SvRV (values))))) {
 		log_err ("Collectd::plugin_dispatch_values: Invalid values.");
 		XSRETURN_EMPTY;
 	}
-
-	if (NULL == values)
-		XSRETURN_EMPTY;
 
 	ret = pplugin_dispatch_values (aTHX_ (HV *)SvRV (values));
 
@@ -2516,7 +2518,10 @@ static int perl_config (oconfig_item_t *ci)
 		int current_status = 0;
 
 		if (NULL != perl_threads)
-			aTHX = PERL_GET_CONTEXT;
+		{
+			if ((aTHX = PERL_GET_CONTEXT) == NULL)
+				return -1;
+		}
 
 		if (0 == strcasecmp (c->key, "LoadPlugin"))
 			current_status = perl_config_loadplugin (aTHX_ c);

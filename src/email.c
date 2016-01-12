@@ -256,8 +256,6 @@ static void *collect (void *arg)
 	collector_t *this = (collector_t *)arg;
 
 	while (1) {
-		int loop = 1;
-
 		conn_t *connection;
 
 		pthread_mutex_lock (&conns_mutex);
@@ -282,15 +280,13 @@ static void *collect (void *arg)
 		log_debug ("collect: handling connection on fd #%i",
 				fileno (this->socket));
 
-		while (loop) {
+		while (42) {
 			/* 256 bytes ought to be enough for anybody ;-) */
 			char line[256 + 1]; /* line + '\0' */
 			int  len = 0;
 
 			errno = 0;
 			if (NULL == fgets (line, sizeof (line), this->socket)) {
-				loop = 0;
-
 				if (0 != errno) {
 					char errbuf[1024];
 					log_err ("collect: reading from socket (fd #%i) "
@@ -310,8 +306,11 @@ static void *collect (void *arg)
 						break;
 				continue;
 			}
+			if (len < 3) { /* [a-z] ':' '\n' */
+				continue;
+			}
 
-			line[len - 1] = '\0';
+			line[len - 1] = 0;
 
 			log_debug ("collect: line = '%s'", line);
 
@@ -334,12 +333,12 @@ static void *collect (void *arg)
 				bytes = atoi (tmp);
 
 				pthread_mutex_lock (&count_mutex);
-				type_list_incr (&list_count, type, 1);
+				type_list_incr (&list_count, type, /* increment = */ 1);
 				pthread_mutex_unlock (&count_mutex);
 
 				if (bytes > 0) {
 					pthread_mutex_lock (&size_mutex);
-					type_list_incr (&list_size, type, bytes);
+					type_list_incr (&list_size, type, /* increment = */ bytes);
 					pthread_mutex_unlock (&size_mutex);
 				}
 			}
@@ -351,19 +350,22 @@ static void *collect (void *arg)
 				pthread_mutex_unlock (&score_mutex);
 			}
 			else if ('c' == line[0]) { /* c:<type1>[,<type2>,...] */
-				char *ptr  = NULL;
-				char *type = strtok_r (line + 2, ",", &ptr);
+				char *dummy = line + 2;
+				char *endptr = NULL;
+				char *type;
 
-				do {
-					pthread_mutex_lock (&check_mutex);
-					type_list_incr (&list_check, type, 1);
-					pthread_mutex_unlock (&check_mutex);
-				} while (NULL != (type = strtok_r (NULL, ",", &ptr)));
+				pthread_mutex_lock (&check_mutex);
+				while ((type = strtok_r (dummy, ",", &endptr)) != NULL)
+				{
+					dummy = NULL;
+					type_list_incr (&list_check, type, /* increment = */ 1);
+				}
+				pthread_mutex_unlock (&check_mutex);
 			}
 			else {
 				log_err ("collect: unknown type '%c'", line[0]);
 			}
-		} /* while (loop) */
+		} /* while (42) */
 
 		log_debug ("Shutting down connection on fd #%i",
 				fileno (this->socket));
@@ -514,28 +516,42 @@ static void *open_connection (void __attribute__((unused)) *arg)
 
 		pthread_mutex_unlock (&available_mutex);
 
-		do {
+		while (42) {
 			errno = 0;
-			if (-1 == (remote = accept (connector_socket, NULL, NULL))) {
-				if (EINTR != errno) {
-					char errbuf[1024];
-					disabled = 1;
-					close (connector_socket);
-					connector_socket = -1;
-					log_err ("accept() failed: %s",
-							sstrerror (errno, errbuf, sizeof (errbuf)));
-					pthread_exit ((void *)1);
-				}
-			}
-		} while (EINTR == errno);
 
-		connection = (conn_t *)smalloc (sizeof (conn_t));
+			remote = accept (connector_socket, NULL, NULL);
+			if (remote == -1) {
+				char errbuf[1024];
+
+				if (errno == EINTR)
+					continue;
+
+				disabled = 1;
+				close (connector_socket);
+				connector_socket = -1;
+				log_err ("accept() failed: %s",
+						 sstrerror (errno, errbuf, sizeof (errbuf)));
+				pthread_exit ((void *)1);
+			}
+
+			/* access() succeeded. */
+			break;
+		}
+
+		connection = malloc (sizeof (*connection));
+		if (connection == NULL)
+		{
+			close (remote);
+			continue;
+		}
+		memset (connection, 0, sizeof (*connection));
 
 		connection->socket = fdopen (remote, "r");
 		connection->next   = NULL;
 
 		if (NULL == connection->socket) {
 			close (remote);
+			sfree (connection);
 			continue;
 		}
 
@@ -575,10 +591,27 @@ static int email_init (void)
 	return (0);
 } /* int email_init */
 
+static void type_list_free (type_list_t *t)
+{
+	type_t *this;
+
+	this = t->head;
+	while (this != NULL)
+	{
+		type_t *next = this->next;
+
+		sfree (this->name);
+		sfree (this);
+
+		this = next;
+	}
+
+	t->head = NULL;
+	t->tail = NULL;
+}
+
 static int email_shutdown (void)
 {
-	type_t *ptr = NULL;
-
 	int i = 0;
 
 	if (connector != ((pthread_t) 0)) {
@@ -618,35 +651,12 @@ static int email_shutdown (void)
 
 	pthread_mutex_unlock (&conns_mutex);
 
-	for (ptr = list_count.head; NULL != ptr; ptr = ptr->next) {
-		free (ptr->name);
-		free (ptr);
-	}
-
-	for (ptr = list_count_copy.head; NULL != ptr; ptr = ptr->next) {
-		free (ptr->name);
-		free (ptr);
-	}
-
-	for (ptr = list_size.head; NULL != ptr; ptr = ptr->next) {
-		free (ptr->name);
-		free (ptr);
-	}
-
-	for (ptr = list_size_copy.head; NULL != ptr; ptr = ptr->next) {
-		free (ptr->name);
-		free (ptr);
-	}
-
-	for (ptr = list_check.head; NULL != ptr; ptr = ptr->next) {
-		free (ptr->name);
-		free (ptr);
-	}
-
-	for (ptr = list_check_copy.head; NULL != ptr; ptr = ptr->next) {
-		free (ptr->name);
-		free (ptr);
-	}
+	type_list_free (&list_count);
+	type_list_free (&list_count_copy);
+	type_list_free (&list_size);
+	type_list_free (&list_size_copy);
+	type_list_free (&list_check);
+	type_list_free (&list_check_copy);
 
 	unlink ((NULL == sock_file) ? SOCK_PATH : sock_file);
 

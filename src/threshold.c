@@ -251,7 +251,6 @@ static int ut_config_type (const threshold_t *th_orig, oconfig_item_t *ci)
   for (i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *option = ci->children + i;
-    status = 0;
 
     if (strcasecmp ("Instance", option->key) == 0)
       status = ut_config_type_instance (&th, option);
@@ -339,7 +338,6 @@ static int ut_config_plugin (const threshold_t *th_orig, oconfig_item_t *ci)
   for (i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *option = ci->children + i;
-    status = 0;
 
     if (strcasecmp ("Type", option->key) == 0)
       status = ut_config_type (&th, option);
@@ -386,7 +384,6 @@ static int ut_config_host (const threshold_t *th_orig, oconfig_item_t *ci)
   for (i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *option = ci->children + i;
-    status = 0;
 
     if (strcasecmp ("Type", option->key) == 0)
       status = ut_config_type (&th, option);
@@ -515,15 +512,12 @@ static int ut_report_state (const data_set_t *ds,
   if (state == STATE_OKAY)
   {
     if (state_old == STATE_MISSING)
-      status = ssnprintf (buf, bufsize,
-          ": Value is no longer missing.");
+      ssnprintf (buf, bufsize, ": Value is no longer missing.");
     else
-      status = ssnprintf (buf, bufsize,
+      ssnprintf (buf, bufsize,
           ": All data sources are within range again. "
           "Current value of \"%s\" is %f.",
           ds->ds[ds_index].name, values[ds_index]);
-    buf += status;
-    bufsize -= status;
   }
   else
   {
@@ -537,7 +531,7 @@ static int ut_report_state (const data_set_t *ds,
     {
       if (!isnan (min) && !isnan (max))
       {
-        status = ssnprintf (buf, bufsize, ": Data source \"%s\" is currently "
+        ssnprintf (buf, bufsize, ": Data source \"%s\" is currently "
             "%f. That is within the %s region of %f%s and %f%s.",
             ds->ds[ds_index].name, values[ds_index],
             (state == STATE_ERROR) ? "failure" : "warning",
@@ -546,13 +540,13 @@ static int ut_report_state (const data_set_t *ds,
       }
       else
       {
-	status = ssnprintf (buf, bufsize, ": Data source \"%s\" is currently "
-	    "%f. That is %s the %s threshold of %f%s.",
-	    ds->ds[ds_index].name, values[ds_index],
-	    isnan (min) ? "below" : "above",
-	    (state == STATE_ERROR) ? "failure" : "warning",
-	    isnan (min) ? max : min,
-	    ((th->flags & UT_FLAG_PERCENTAGE) != 0) ? "%" : "");
+        ssnprintf (buf, bufsize, ": Data source \"%s\" is currently "
+            "%f. That is %s the %s threshold of %f%s.",
+            ds->ds[ds_index].name, values[ds_index],
+            isnan (min) ? "below" : "above",
+            (state == STATE_ERROR) ? "failure" : "warning",
+            isnan (min) ? max : min,
+            ((th->flags & UT_FLAG_PERCENTAGE) != 0) ? "%" : "");
       }
     }
     else if (th->flags & UT_FLAG_PERCENTAGE)
@@ -575,7 +569,7 @@ static int ut_report_state (const data_set_t *ds,
       else
         value = 100.0 * values[ds_index] / sum;
 
-      status = ssnprintf (buf, bufsize, ": Data source \"%s\" is currently "
+      ssnprintf (buf, bufsize, ": Data source \"%s\" is currently "
           "%g (%.2f%%). That is %s the %s threshold of %.2f%%.",
           ds->ds[ds_index].name, values[ds_index], value,
           (value < min) ? "below" : "above",
@@ -584,15 +578,13 @@ static int ut_report_state (const data_set_t *ds,
     }
     else /* is not inverted */
     {
-      status = ssnprintf (buf, bufsize, ": Data source \"%s\" is currently "
-	  "%f. That is %s the %s threshold of %f.",
-	  ds->ds[ds_index].name, values[ds_index],
-	  (values[ds_index] < min) ? "below" : "above",
-	  (state == STATE_ERROR) ? "failure" : "warning",
-	  (values[ds_index] < min) ? min : max);
+      ssnprintf (buf, bufsize, ": Data source \"%s\" is currently "
+          "%f. That is %s the %s threshold of %f.",
+          ds->ds[ds_index].name, values[ds_index],
+          (values[ds_index] < min) ? "below" : "above",
+          (state == STATE_ERROR) ? "failure" : "warning",
+          (values[ds_index] < min) ? min : max);
     }
-    buf += status;
-    bufsize -= status;
   }
 
   plugin_dispatch_notification (&n);
@@ -880,6 +872,7 @@ int ut_config (oconfig_item_t *ci)
 { /* {{{ */
   int i;
   int status = 0;
+  int old_size = c_avl_size (threshold_tree);
 
   threshold_t th;
 
@@ -906,7 +899,6 @@ int ut_config (oconfig_item_t *ci)
   for (i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *option = ci->children + i;
-    status = 0;
 
     if (strcasecmp ("Type", option->key) == 0)
       status = ut_config_type (&th, option);
@@ -924,7 +916,9 @@ int ut_config (oconfig_item_t *ci)
       break;
   }
 
-  if (c_avl_size (threshold_tree) > 0) {
+  /* register callbacks if this is the first time we see a valid config */
+  if ((old_size == 0) && (c_avl_size (threshold_tree) > 0))
+  {
     plugin_register_missing ("threshold", ut_missing,
         /* user data = */ NULL);
     plugin_register_write ("threshold", ut_check_threshold,

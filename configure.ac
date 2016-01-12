@@ -4,6 +4,11 @@ AC_CONFIG_SRCDIR(src/)
 AC_CONFIG_HEADERS(src/config.h)
 AC_CONFIG_AUX_DIR([libltdl/config])
 
+dnl older automake's default of ARFLAGS=cru is noisy on newer binutils;
+dnl we don't really need the 'u' even in older toolchains.  Then there is
+dnl older libtool, which spelled it AR_FLAGS
+m4_divert_text([DEFAULTS], [: "${ARFLAGS=cr} ${AR_FLAGS=cr}"])
+
 m4_ifdef([LT_PACKAGE_VERSION],
 	# libtool >= 2.2
 	[
@@ -23,6 +28,8 @@ m4_ifdef([LT_PACKAGE_VERSION],
 	 AC_DEFINE(LIBTOOL_VERSION, 1, [Define to used libtool version.])
 	]
 )
+
+AM_CONDITIONAL([BUILD_INCLUDED_LTDL], [test "x$LTDLDEPS" != "x"])
 
 AM_INIT_AUTOMAKE([tar-pax dist-bzip2 foreign])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
@@ -47,15 +54,30 @@ AC_DISABLE_STATIC
 AC_PROG_LIBTOOL
 AC_PROG_LEX
 AC_PROG_YACC
+
+# Warn when pkg.m4 is missing
+m4_pattern_forbid([^_?PKG_[A-Z_]+$],[*** pkg.m4 missing, please install pkg-config])
+
 PKG_PROG_PKG_CONFIG
 
 AC_CHECK_PROG([have_protoc_c], [protoc-c], [yes], [no])
-AC_CHECK_HEADERS([google/protobuf-c/protobuf-c.h],
-                 [have_protobuf_c_h="yes"],
-                 [have_protobuf_c_h="no"])
-if test "x$have_protoc_c" = "xyes" && test "x$have_protobuf_c_h" != "xyes"
+if test "x$have_protoc_c" = "xno"
 then
-	have_protoc_c="no (unable to find <google/protobuf-c/protobuf-c.h>)"
+	have_protoc_c="no (protoc-c compiler not found)"
+fi
+
+if test "x$have_protoc_c" = "xyes"
+then
+	AC_CHECK_HEADERS([protobuf-c/protobuf-c.h google/protobuf-c/protobuf-c.h],
+			 [have_protoc_c="yes"; break],
+			 [have_protoc_c="no (<google/protobuf-c/protobuf-c.h> not found)"])
+fi
+if test "x$have_protoc_c" = "xyes"
+then
+	AC_CHECK_LIB([protobuf-c], [protobuf_c_message_pack],
+		     [have_protoc_c="yes"],
+		     [have_protoc_c="no (libprotobuf-c not found)"])
+
 fi
 AM_CONDITIONAL(HAVE_PROTOC_C, test "x$have_protoc_c" = "xyes")
 
@@ -90,12 +112,12 @@ case $host_os in
 esac
 AC_MSG_RESULT([$ac_system])
 
-AM_CONDITIONAL([BUILD_LINUX],[test "x$x$ac_system" = "xLinux"])
-AM_CONDITIONAL([BUILD_SOLARIS],[test "x$x$ac_system" = "xSolaris"])
-AM_CONDITIONAL([BUILD_DARWIN],[test "x$x$ac_system" = "xDarwin"])
-AM_CONDITIONAL([BUILD_OPENBSD],[test "x$x$ac_system" = "xOpenBSD"])
-AM_CONDITIONAL([BUILD_AIX],[test "x$x$ac_system" = "xAIX"])
-AM_CONDITIONAL([BUILD_FREEBSD],[test "x$x$ac_system" = "xFreeBSD"])
+AM_CONDITIONAL([BUILD_LINUX],[test "x$ac_system" = "xLinux"])
+AM_CONDITIONAL([BUILD_SOLARIS],[test "x$ac_system" = "xSolaris"])
+AM_CONDITIONAL([BUILD_DARWIN],[test "x$ac_system" = "xDarwin"])
+AM_CONDITIONAL([BUILD_OPENBSD],[test "x$ac_system" = "xOpenBSD"])
+AM_CONDITIONAL([BUILD_AIX],[test "x$ac_system" = "xAIX"])
+AM_CONDITIONAL([BUILD_FREEBSD],[test "x$ac_system" = "xFreeBSD"])
 
 if test "x$ac_system" = "xLinux"
 then
@@ -113,7 +135,20 @@ if test "x$ac_system" = "xSolaris"
 then
 	AC_DEFINE(_POSIX_PTHREAD_SEMANTICS, 1, [Define to enforce POSIX thread semantics under Solaris.])
 	AC_DEFINE(_REENTRANT,               1, [Define to enable reentrancy interfaces.])
+
+	AC_MSG_CHECKING([whether compiler builds 64bit binaries])
+	AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
+			   #ifndef _LP64
+			   # error "Compiler not in 64bit mode."
+			   #endif
+			   ])],
+			   [AC_MSG_RESULT([yes])],
+			   [
+			    AC_MSG_RESULT([no])
+			    AC_MSG_NOTICE([Solaris detected. Please consider building a 64-bit binary.])
+			   ])
 fi
+
 if test "x$ac_system" = "xAIX"
 then
 	AC_DEFINE(_THREAD_SAFE_ERRNO, 1, [Define to use the thread-safe version of errno under AIX.])
@@ -285,6 +320,54 @@ AC_CHECK_HEADERS(netinet/udp.h, [], [],
 #endif
 ])
 
+have_ip6_ext="no"
+AC_CHECK_TYPES([struct ip6_ext], [have_ip6_ext="yes"], [have_ip6_ext="no"],
+[#if HAVE_STDINT_H
+# include <stdint.h>
+#endif
+#if HAVE_SYS_TYPES_H
+# include <sys/types.h>
+#endif
+#if HAVE_NETINET_IN_SYSTM_H
+# include <netinet/in_systm.h>
+#endif
+#if HAVE_NETINET_IN_H
+# include <netinet/in.h>
+#endif
+#if HAVE_NETINET_IP6_H
+# include <netinet/ip6.h>
+#endif
+])
+
+if test "x$have_ip6_ext" = "xno"; then
+	SAVE_CFLAGS="$CFLAGS"
+	CFLAGS="$CFLAGS -DSOLARIS2=8"
+
+	AC_CHECK_TYPES([struct ip6_ext],
+		       [have_ip6_ext="yes, with -DSOLARIS2=8"],
+		       [have_ip6_ext="no"],
+[#if HAVE_STDINT_H
+# include <stdint.h>
+#endif
+#if HAVE_SYS_TYPES_H
+# include <sys/types.h>
+#endif
+#if HAVE_NETINET_IN_SYSTM_H
+# include <netinet/in_systm.h>
+#endif
+#if HAVE_NETINET_IN_H
+# include <netinet/in.h>
+#endif
+#if HAVE_NETINET_IP6_H
+# include <netinet/ip6.h>
+#endif
+])
+
+	if test "x$have_ip6_ext" = "xno"; then
+		CFLAGS="$SAVE_CFLAGS"
+	fi
+fi
+
 # For cpu modules
 AC_CHECK_HEADERS(sys/dkstat.h)
 if test "x$ac_system" = "xDarwin"
@@ -375,18 +458,6 @@ AC_CHECK_HEADERS(sys/swap.h vm/anon.h, [], [have_sys_swap_h="no"],
 # include <sys/param.h>
 #endif
 ])
-
-if test "x$have_sys_swap_h$ac_system" = "xnoSolaris"
-then
-	hint_64=""
-	if test "x$GCC" = "xyes"
-	then
-		hint_64="CFLAGS='-m64'"
-	else
-		hint_64="CFLAGS='-xarch=v9'"
-	fi
-	AC_MSG_NOTICE([Solaris detected and sys/swap.h not usable. Try building a 64-bit binary ($hint_64 ./configure).])
-fi
 
 # For load module
 # For the processes plugin
@@ -583,6 +654,9 @@ AC_CHECK_HEADERS(net/pfvar.h,
 #if HAVE_NET_IF_H
 # include <net/if.h>
 #endif
+#if HAVE_NETINET_IN_H
+# include <netinet/in.h>
+#endif
 ])
 
 # For the multimeter plugin
@@ -595,14 +669,14 @@ AC_CHECK_HEADERS(asm/msr-index.h, [have_asm_msrindex_h="yes"])
 
 if test "x$have_asm_msrindex_h" = "xyes"
 then
-  AC_CACHE_CHECK([whether asm/msr-index.h has MSR_CORE_C3_RESIDENCY],
+  AC_CACHE_CHECK([whether asm/msr-index.h has MSR_PKG_C10_RESIDENCY],
                  [c_cv_have_usable_asm_msrindex_h],
                  AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
 [[[
 #include<asm/msr-index.h>
 ]]],
 [[[
-int y = MSR_CORE_C3_RESIDENCY;
+int y = MSR_PKG_C10_RESIDENCY;
 return(y);
 ]]]
   )],
@@ -1195,6 +1269,8 @@ have_getvfsstat="no"
 AC_CHECK_FUNCS(getvfsstat, [have_getvfsstat="yes"])
 have_listmntent="no"
 AC_CHECK_FUNCS(listmntent, [have_listmntent="yes"])
+have_getmntent_r="no"
+AC_CHECK_FUNCS(getmntent_r, [have_getmntent_r="yes"])
 
 have_getmntent="no"
 AC_CHECK_FUNCS(getmntent, [have_getmntent="c"])
@@ -1866,30 +1942,33 @@ AC_ARG_WITH(libganglia, [AS_HELP_STRING([--with-libganglia@<:@=PREFIX@:>@], [Pat
 	 GANGLIA_LDFLAGS="-L$withval/lib"
 	 with_libganglia="yes"
  else
-	 with_libganglia_config="ganglia-config"
 	 with_libganglia="$withval"
  fi; fi; fi
 ],
 [
- with_libganglia_config="ganglia-config"
  with_libganglia="yes"
 ])
 
-if test "x$with_libganglia" = "xyes" && test "x$with_libganglia_config" != "x"
+if test "x$with_libganglia" = "xyes"
 then
-	if test "x$GANGLIA_CPPFLAGS" = "x"
+	if test "x$with_libganglia_config" != "x"
 	then
-		GANGLIA_CPPFLAGS=`"$with_libganglia_config" --cflags 2>/dev/null`
-	fi
+		if test "x$GANGLIA_CPPFLAGS" = "x"
+		then
+			GANGLIA_CPPFLAGS=`"$with_libganglia_config" --cflags 2>/dev/null`
+		fi
 
-	if test "x$GANGLIA_LDFLAGS" = "x"
-	then
-		GANGLIA_LDFLAGS=`"$with_libganglia_config" --ldflags 2>/dev/null`
-	fi
+		if test "x$GANGLIA_LDFLAGS" = "x"
+		then
+			GANGLIA_LDFLAGS=`"$with_libganglia_config" --ldflags 2>/dev/null`
+		fi
 
-	if test "x$GANGLIA_LIBS" = "x"
-	then
-		GANGLIA_LIBS=`"$with_libganglia_config" --libs 2>/dev/null`
+		if test "x$GANGLIA_LIBS" = "x"
+		then
+			GANGLIA_LIBS=`"$with_libganglia_config" --libs 2>/dev/null`
+		fi
+	else
+		GANGLIA_LIBS="-lganglia"
 	fi
 fi
 
@@ -1961,12 +2040,6 @@ then
 		GCRYPT_CPPFLAGS=`"$with_libgcrypt_config" --cflags 2>/dev/null`
 	fi
 
-	if test "x$GCRYPT_LDFLAGS" = "x"
-	then
-		gcrypt_exec_prefix=`"$with_libgcrypt_config" --exec-prefix 2>/dev/null`
-		GCRYPT_LDFLAGS="-L$gcrypt_exec_prefix/lib"
-	fi
-
 	if test "x$GCRYPT_LIBS" = "x"
 	then
 		GCRYPT_LIBS=`"$with_libgcrypt_config" --libs 2>/dev/null`
@@ -1975,8 +2048,10 @@ fi
 
 SAVE_CPPFLAGS="$CPPFLAGS"
 SAVE_LDFLAGS="$LDFLAGS"
+SAVE_LIBS="$LIBS"
 CPPFLAGS="$CPPFLAGS $GCRYPT_CPPFLAGS"
 LDFLAGS="$LDFLAGS $GCRYPT_LDFLAGS"
+LIBS="$LIBS $GCRYPT_LIBS"
 
 if test "x$with_libgcrypt" = "xyes"
 then
@@ -1991,10 +2066,6 @@ fi
 
 if test "x$with_libgcrypt" = "xyes"
 then
-	if test "x$GCRYPT_LDFLAGS" != "x"
-	then
-		AC_MSG_NOTICE([gcrypt LDFLAGS: $GCRYPT_LDFLAGS])
-	fi
 	AC_CHECK_LIB(gcrypt, gcry_md_hash_buffer,
 		[with_libgcrypt="yes"],
 		[with_libgcrypt="no (symbol gcry_md_hash_buffer not found)"])
@@ -2008,6 +2079,7 @@ fi
 
 CPPFLAGS="$SAVE_CPPFLAGS"
 LDFLAGS="$SAVE_LDFLAGS"
+LIBS="$SAVE_LIBS"
 
 if test "x$with_libgcrypt" = "xyes"
 then
@@ -2165,7 +2237,7 @@ then
 		fi
 
 		AC_MSG_CHECKING([for libjvm.so])
-		TMPVAR=`find -L "$with_java_home" -name libjvm.so -type f -exec 'dirname' '{}' ';' 2>/dev/null | head -n 1`
+		TMPVAR=`find -L "$with_java_home" -type f \( -name libjvm.so -o -name libjvm.dylib \) -exec 'dirname' '{}' ';' 2>/dev/null | head -n 1`
 		if test "x$TMPVAR" != "x"
 		then
 			AC_MSG_RESULT([found in $TMPVAR])
@@ -2513,7 +2585,7 @@ then
 	SAVE_CPPFLAGS="$CPPFLAGS"
 	CPPFLAGS="$CPPFLAGS $with_libmodbus_cflags"
 
-	AC_CHECK_HEADERS(modbus/modbus.h, [], [with_libmodbus="no (modbus/modbus.h not found)"])
+	AC_CHECK_HEADERS(modbus.h, [], [with_libmodbus="no (modbus.h not found)"])
 
 	CPPFLAGS="$SAVE_CPPFLAGS"
 fi
@@ -2632,7 +2704,7 @@ AC_ARG_WITH(libmysql, [AS_HELP_STRING([--with-libmysql@<:@=PREFIX@:>@], [Path to
 ])
 if test "x$with_libmysql" = "xyes"
 then
-	with_mysql_cflags=`$with_mysql_config --cflags 2>/dev/null`
+	with_mysql_cflags=`$with_mysql_config --include 2>/dev/null`
 	mysql_config_status=$?
 
 	if test $mysql_config_status -ne 0
@@ -2668,15 +2740,17 @@ then
 	then
 		with_libmysql="no ($with_mysql_config failed)"
 	else
-		AC_CHECK_LIB(mysqlclient, mysql_init,
-		 [with_libmysql="yes"],
-		 [with_libmysql="no (symbol 'mysql_init' not found)"],
-		 [$with_mysql_libs])
-
-		AC_CHECK_LIB(mysqlclient, mysql_get_server_version,
+		SAVE_CPPFLAGS="$CPPFLAGS"
+		CPPFLAGS="$CPPFLAGS $with_mysql_cflags"
+		SAVE_LIBS="$LIBS"
+		LIBS="$with_mysql_libs"
+		AC_SEARCH_LIBS([mysql_get_server_version],
+		 [],
 		 [with_libmysql="yes"],
 		 [with_libmysql="no (symbol 'mysql_get_server_version' not found)"],
-		 [$with_mysql_libs])
+		 [])
+		CPPFLAGS="$SAVE_CPPFLAGS"
+		LIBS="$SAVE_LIBS"
 	fi
 fi
 if test "x$with_libmysql" = "xyes"
@@ -3193,11 +3267,6 @@ if test "x$with_libpcap" = "xyes"
 then
 	AC_CHECK_HEADERS(pcap.h,,
 			 [with_libpcap="no (pcap.h not found)"])
-fi
-if test "x$with_libpcap" = "xyes"
-then
-	AC_CHECK_HEADERS(pcap-bpf.h,,
-			 [with_libpcap="no (pcap-bpf.h not found)"])
 fi
 if test "x$with_libpcap" = "xyes"
 then
@@ -4742,11 +4811,11 @@ then
 
 	CPPFLAGS="$CPPFLAGS $with_libvarnish_cflags"
 
-	AC_CHECK_HEADERS(varnish/vapi/vsc.h,
+	AC_CHECK_HEADERS(vapi/vsc.h,
 		[AC_DEFINE([HAVE_VARNISH_V4], [1], [Varnish 4 API support])],
-		[AC_CHECK_HEADERS(varnish/vsc.h,
+		[AC_CHECK_HEADERS(vsc.h,
 			[AC_DEFINE([HAVE_VARNISH_V3], [1], [Varnish 3 API support])],
-			[AC_CHECK_HEADERS(varnish/varnishapi.h,
+			[AC_CHECK_HEADERS(varnishapi.h,
 				[AC_DEFINE([HAVE_VARNISH_V2], [1], [Varnish 2 API support])],
 				[with_libvarnish="no (found none of the varnish header files)"])])])
 
@@ -5166,6 +5235,7 @@ plugin_disk="no"
 plugin_drbd="no"
 plugin_entropy="no"
 plugin_ethstat="no"
+plugin_fhcount="no"
 plugin_fscache="no"
 plugin_interface="no"
 plugin_ipmi="no"
@@ -5208,6 +5278,7 @@ then
 	plugin_disk="yes"
 	plugin_drbd="yes"
 	plugin_entropy="yes"
+	plugin_fhcount="yes"
 	plugin_fscache="yes"
 	plugin_interface="yes"
 	plugin_ipc="yes"
@@ -5255,15 +5326,15 @@ fi
 
 if test "x$ac_system" = "xAIX"
 then
-        plugin_tcpconns="yes"
-        plugin_ipc="yes"
+	plugin_tcpconns="yes"
+	plugin_ipc="yes"
 fi
 
 # FreeBSD
 
 if test "x$ac_system" = "xFreeBSD"
 then
-        plugin_zfs_arc="yes"
+	plugin_zfs_arc="yes"
 fi
 
 
@@ -5399,6 +5470,11 @@ fi
 #	plugin_df="yes"
 #fi
 if test "x$c_cv_have_one_getmntent" = "xyes"
+then
+	plugin_df="yes"
+fi
+
+if test "x$c_cv_have_getmntent_r" = "xyes"
 then
 	plugin_df="yes"
 fi
@@ -5551,7 +5627,7 @@ AC_PLUGIN([email],       [yes],                [EMail statistics])
 AC_PLUGIN([entropy],     [$plugin_entropy],    [Entropy statistics])
 AC_PLUGIN([ethstat],     [$plugin_ethstat],    [Stats from NIC driver])
 AC_PLUGIN([exec],        [yes],                [Execution of external programs])
-AC_PLUGIN([fhcount],     [yes],                [File handles statistics])
+AC_PLUGIN([fhcount],     [$plugin_fhcount],    [File handles statistics])
 AC_PLUGIN([filecount],   [yes],                [Count files in directories])
 AC_PLUGIN([fscache],     [$plugin_fscache],    [fscache statistics])
 AC_PLUGIN([gmond],       [$with_libganglia],   [Ganglia plugin])

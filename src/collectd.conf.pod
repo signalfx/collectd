@@ -150,12 +150,27 @@ plugins that don't provide any configuration, e.g. the I<Load plugin>.
 When set to B<true>, various statistics about the I<collectd> daemon will be
 collected, with "collectd" as the I<plugin name>. Defaults to B<false>.
 
-The "write_queue" I<plugin instance> reports the number of elements currently
-queued and the number of elements dropped off the queue by the
-B<WriteQueueLimitLow>/B<WriteQueueLimitHigh> mechanism.
+The following metrics are reported:
 
-The "cache" I<plugin instance> reports the number of elements in the value list
-cache (the cache you can interact with using L<collectd-unixsock(5)>).
+=over 4
+
+=item C<collectd-write_queue/queue_length>
+
+The number of metrics currently in the write queue. You can limit the queue
+length with the B<WriteQueueLimitLow> and B<WriteQueueLimitHigh> options.
+
+=item C<collectd-write_queue/derive-dropped>
+
+The number of metrics dropped due to a queue length limitation.
+If this value is non-zero, your system can't handle all incoming metrics and
+protects itself against overload by dropping metrics.
+
+=item C<collectd-cache/cache_size>
+
+The number of elements in the metric cache (the cache you can interact with
+using L<collectd-unixsock(5)>).
+
+=back
 
 =item B<Include> I<Path> [I<pattern>]
 
@@ -501,7 +516,7 @@ are disabled by default.
 
 =head2 Plugin C<amqp>
 
-The I<AMQMP plugin> can be used to communicate with other instances of
+The I<AMQP plugin> can be used to communicate with other instances of
 I<collectd> or third party applications using an AMQP message broker. Values
 are sent to or received from the broker, which handles routing, queueing and
 possibly filtering or messages.
@@ -1546,7 +1561,7 @@ setting accordingly to prevent this from blocking other plugins.
 =head2 Plugin C<curl_json>
 
 The B<curl_json plugin> collects values from JSON data to be parsed by
-B<libyajl> (L<http://www.lloydforge.org/projects/yajl/>) retrieved via
+B<libyajl> (L<https://lloyd.github.io/yajl/>) retrieved via
 either B<libcurl> (L<http://curl.haxx.se/>) or read directly from a
 unix socket. The former can be used, for example, to collect values
 from CouchDB documents (which are stored JSON notation), and the
@@ -2267,7 +2282,7 @@ expected from them. This is documented in great detail in L<collectd-exec(5)>.
 =head2 Plugin C<fhcount>
 
 The C<fhcount> plugin provides statistics about used, unused and total number of
-file handles.
+file handles on Linux.
 
 The I<fhcount plugin> provides the following configuration options:
 
@@ -2538,9 +2553,13 @@ a notification is sent.
 
 =item B<Chain> I<Table> I<Chain> [I<Comment|Number> [I<Name>]]
 
-Select the rules to count. If only I<Table> and I<Chain> are given, this plugin
-will collect the counters of all rules which have a comment-match. The comment
-is then used as type-instance.
+=item B<Chain6> I<Table> I<Chain> [I<Comment|Number> [I<Name>]]
+
+Select the iptables/ip6tables filter rules to count packets and bytes from.
+
+If only I<Table> and I<Chain> are given, this plugin will collect the counters
+of all rules which have a comment-match. The comment is then used as
+type-instance.
 
 If I<Comment> or I<Number> is given, only the rule with the matching comment or
 the I<n>th rule will be collected. Again, the comment (or the number) will be
@@ -6976,6 +6995,10 @@ You can also specify combinations of these fields. For example B<name uuid>
 means to concatenate the guest name and UUID (with a literal colon character
 between, thus I<"foo:1234-1234-1234-1234">).
 
+At the moment of writing (collectd-5.5), hostname string is limited to 62
+characters. In case when combination of fields exceeds 62 characters,
+hostname will be truncated without a warning.
+
 =item B<InterfaceFormat> B<name>|B<address>
 
 When the virt plugin logs interface data, it sets the name of the collected
@@ -6993,6 +7016,10 @@ data according to this setting. The default is to use the guest name as provided
 by the hypervisor, which is equal to setting B<name>.
 
 B<uuid> means use the guest's UUID.
+
+You can also specify combinations of these fields. For example B<name uuid>
+means to concatenate the guest name and UUID (with a literal colon character
+between, thus I<"foo:1234-1234-1234-1234">).
 
 =back
 
@@ -7466,7 +7493,7 @@ Synopsis:
 
 Values are submitted to I<Sorted Sets>, using the metric name as the key, and
 the timestamp as the score. Retrieving a date range can then be done using the
-C<ZRANGEBYSCORE> I<Redis> command. Additionnally, all the identifiers of these
+C<ZRANGEBYSCORE> I<Redis> command. Additionally, all the identifiers of these
 I<Sorted Sets> are kept in a I<Set> called C<collectd/values> and can be
 retrieved using the C<SMEMBERS> I<Redis> command. See
 L<http://redis.io/commands#sorted_set> and L<http://redis.io/commands#set> for
@@ -7484,9 +7511,9 @@ options are available:
 =item B<Node> I<Nodename>
 
 The B<Node> block identifies a new I<Redis> node, that is a new I<Redis>
-instance running in an specified host and port. The name for node is a
+instance running on a specified host and port. The node name is a
 canonical identifier which is used as I<plugin instance>. It is limited to
-64E<nbsp>characters in length.
+51E<nbsp>characters in length.
 
 =item B<Host> I<Hostname>
 
@@ -7582,7 +7609,7 @@ C<ds_type:derive:rate>.
 
 =item B<AlwaysAppendDS> B<false>|B<true>
 
-If set the B<true>, append the name of the I<Data Source> (DS) to the
+If set to B<true>, append the name of the I<Data Source> (DS) to the
 "service", i.e. the field that, together with the "host" field, uniquely
 identifies a metric in I<Riemann>. If set to B<false> (the default), this is
 only done when there is more than one DS.

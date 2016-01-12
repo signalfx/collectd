@@ -62,7 +62,6 @@ static int wr_write (const data_set_t *ds, /* {{{ */
   char *value_ptr;
   int status;
   redisReply   *rr;
-  int i;
 
   status = FORMAT_VL (ident, sizeof (ident), vl);
   if (status != 0)
@@ -73,38 +72,9 @@ static int wr_write (const data_set_t *ds, /* {{{ */
   memset (value, 0, sizeof (value));
   value_size = sizeof (value);
   value_ptr = &value[0];
-
-#define APPEND(...) do {                                             \
-  status = snprintf (value_ptr, value_size, __VA_ARGS__);            \
-  if (((size_t) status) > value_size)                                \
-  {                                                                  \
-    value_ptr += value_size;                                         \
-    value_size = 0;                                                  \
-  }                                                                  \
-  else                                                               \
-  {                                                                  \
-    value_ptr += status;                                             \
-    value_size -= status;                                            \
-  }                                                                  \
-} while (0)
-
-  APPEND ("%s:", time);
-
-  for (i = 0; i < ds->ds_num; i++)
-  {
-    if (ds->ds[i].type == DS_TYPE_COUNTER)
-      APPEND ("%llu", vl->values[i].counter);
-    else if (ds->ds[i].type == DS_TYPE_GAUGE)
-      APPEND (GAUGE_FORMAT, vl->values[i].gauge);
-    else if (ds->ds[i].type == DS_TYPE_DERIVE)
-      APPEND ("%"PRIi64, vl->values[i].derive);
-    else if (ds->ds[i].type == DS_TYPE_ABSOLUTE)
-      APPEND ("%"PRIu64, vl->values[i].absolute);
-    else
-      assert (23 == 42);
-  }
-
-#undef APPEND
+  status = format_values (value_ptr, value_size, ds, vl, /* store rates = */ 0);
+  if (status != 0)
+    return (status);
 
   pthread_mutex_lock (&node->lock);
 
@@ -131,12 +101,19 @@ static int wr_write (const data_set_t *ds, /* {{{ */
   }
 
   rr = redisCommand (node->conn, "ZADD %s %s %s", key, time, value);
-  if (rr==NULL)
+  if (rr == NULL)
     WARNING("ZADD command error. key:%s message:%s", key, node->conn->errstr);
+  else
+    freeReplyObject (rr);
 
+  /* TODO(octo): This is more overhead than necessary. Use the cache and
+   * metadata to determine if it is a new metric and call SADD only once for
+   * each metric. */
   rr = redisCommand (node->conn, "SADD collectd/values %s", ident);
   if (rr==NULL)
     WARNING("SADD command error. ident:%s message:%s", ident, node->conn->errstr);
+  else
+    freeReplyObject (rr);
 
   pthread_mutex_unlock (&node->lock);
 

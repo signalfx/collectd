@@ -62,6 +62,7 @@ static void memcached_free (memcached_t *st)
   sfree (st->socket);
   sfree (st->host);
   sfree (st->port);
+  sfree (st);
 }
 
 static int memcached_connect_unix (memcached_t *st)
@@ -439,7 +440,7 @@ static int memcached_read (user_data_t *user_data)
     }
     else if (FIELD_IS ("listen_disabled_num"))
     {
-      submit_derive ("memcached_connections", "listen_disabled", atof (fields[2]), st);
+      submit_derive ("connections", "listen_disabled", atof (fields[2]), st);
     }
 
     /*

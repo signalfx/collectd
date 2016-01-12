@@ -188,7 +188,7 @@ static int tbl_config_result (tbl_t *tbl, oconfig_item_t *ci)
 
 	res = (tbl_result_t *)realloc (tbl->results,
 			(tbl->results_num + 1) * sizeof (*tbl->results));
-	if (NULL == tbl) {
+	if (res == NULL) {
 		char errbuf[1024];
 		log_err ("realloc failed: %s.",
 				sstrerror (errno, errbuf, sizeof (errbuf)));
@@ -283,8 +283,9 @@ static int tbl_config_table (oconfig_item_t *ci)
 	if (NULL == tbl->sep) {
 		log_err ("Table \"%s\" does not specify any separator.", tbl->file);
 		status = 1;
+	} else {
+		strunescape (tbl->sep, strlen (tbl->sep) + 1);
 	}
-	strunescape (tbl->sep, strlen (tbl->sep) + 1);
 
 	if (NULL == tbl->instance) {
 		tbl->instance = sstrdup (tbl->file);

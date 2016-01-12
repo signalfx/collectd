@@ -763,7 +763,7 @@ static int bind_xml_stats_handle_zone (int version, xmlDoc *doc, /* {{{ */
   xmlFree (zone_name);
   zone_name = NULL;
 
-  if (j >= views->zones_num)
+  if (j >= view->zones_num)
     return (0);
 
   zone_name = view->zones[j];
@@ -1666,7 +1666,7 @@ static int bind_config_add_view (oconfig_item_t *ci) /* {{{ */
   if (tmp->name == NULL)
   {
     ERROR ("bind plugin: strdup failed.");
-    free (tmp);
+    sfree (views);
     return (-1);
   }
 
@@ -1709,6 +1709,7 @@ static int bind_config (oconfig_item_t *ci) /* {{{ */
         return (-1);
       }
 
+      sfree (url);
       url = strdup (child->values[0].value.string);
     } else if (strcasecmp ("OpCodes", child->key) == 0)
       bind_config_set_bool ("OpCodes", &global_opcodes, child);
