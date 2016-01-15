@@ -223,6 +223,9 @@ exit 0
 %attr(0644,root,root) %{_libdir}/%{name}/tcpconns.so*
 %attr(0644,root,root) %{_libdir}/%{name}/tcpconns.la
 
+%attr(0644,root,root) %{_libdir}/%{name}/unixfifo.so*
+%attr(0644,root,root) %{_libdir}/%{name}/unixfifo.la
+
 %attr(0644,root,root) %{_libdir}/%{name}/unixsock.so*
 %attr(0644,root,root) %{_libdir}/%{name}/unixsock.la
 

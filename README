@@ -425,6 +425,10 @@ Features
       updates to the files and write a bunch of updates at once, which lessens
       system load a lot.
 
+    - unixfifo
+      One can qwrite values and notifications to the unixfifo plugin.
+      Please read collectd-unixfifo(5) for a description on how that's done.
+
     - unixsock
       One can query the values from the unixsock plugin whenever they're
       needed. Please read collectd-unixsock(5) for a description on how that's

@@ -29,6 +29,8 @@
 
 #include <stdio.h>
 
+/* fh can be NULL(0) for clients that do not want any response messages */
+
 int handle_putnotif (FILE *fh, char *buffer);
 
 /* vim: set shiftwidth=2 softtabstop=2 tabstop=8 : */

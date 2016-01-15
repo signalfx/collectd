@@ -29,6 +29,8 @@
 
 #include <stdio.h>
 
+/* fh can be NULL(0) for clients that do not want any response messages */
+
 int handle_flush (FILE *fh, char *buffer);
 
 #endif /* UTILS_CMD_FLUSH_H */

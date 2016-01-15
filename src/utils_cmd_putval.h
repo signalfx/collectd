@@ -31,6 +31,8 @@
 
 #include "plugin.h"
 
+/* fh can be NULL(0) for clients that do not want any response messages */
+
 int handle_putval (FILE *fh, char *buffer);
 
 int create_putval (char *ret, size_t ret_len,

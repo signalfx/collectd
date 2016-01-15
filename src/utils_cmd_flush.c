@@ -44,20 +44,25 @@ int handle_flush (FILE *fh, char *buffer)
 
 	size_t i;
 
-#define PRINT_TO_SOCK(fh, ...) \
-	do { \
-		if (fprintf (fh, __VA_ARGS__) < 0) { \
-			char errbuf[1024]; \
-			WARNING ("handle_flush: failed to write to socket #%i: %s", \
-					fileno (fh), sstrerror (errno, errbuf, sizeof (errbuf))); \
-			strarray_free (plugins, plugins_num); \
-			strarray_free (identifiers, identifiers_num); \
-			return -1; \
-		} \
-		fflush(fh); \
-	} while (0)
-
-	if ((fh == NULL) || (buffer == NULL))
+#define SEND_RESPONSE(fh, ...) \
+    if (fh) \
+    { \
+        do { \
+            if (fprintf (fh, __VA_ARGS__) < 0) { \
+                char errbuf[1024]; \
+                WARNING ("handle_putval: failed to write to socket #%i: %s", \
+                fileno (fh), sstrerror (errno, errbuf, sizeof (errbuf))); \
+                return -1; \
+            } \
+            fflush(fh); \
+        } while (0); \
+    } \
+    else \
+    { \
+        ERROR(__VA_ARGS__); \
+    }
+    
+	if (buffer == NULL)
 		return (-1);
 
 	DEBUG ("utils_cmd_flush: handle_flush (fh = %p, buffer = %s);",
@@ -65,7 +70,7 @@ int handle_flush (FILE *fh, char *buffer)
 
 	if (strncasecmp ("FLUSH", buffer, strlen ("FLUSH")) != 0)
 	{
-		PRINT_TO_SOCK (fh, "-1 Cannot parse command.\n");
+		SEND_RESPONSE (fh, "-1 Cannot parse command.\n");
 		return (-1);
 	}
 	buffer += strlen ("FLUSH");
@@ -81,7 +86,7 @@ int handle_flush (FILE *fh, char *buffer)
 		status = parse_option (&buffer, &opt_key, &opt_value);
 		if (status != 0)
 		{
-			PRINT_TO_SOCK (fh, "-1 Parsing options failed.\n");
+			SEND_RESPONSE (fh, "-1 Parsing options failed.\n");
 			strarray_free (plugins, plugins_num);
 			strarray_free (identifiers, identifiers_num);
 			return (-1);
@@ -101,7 +106,7 @@ int handle_flush (FILE *fh, char *buffer)
 
 			if ((endptr == opt_value) || (errno != 0) || (!isfinite (timeout)))
 			{
-				PRINT_TO_SOCK (fh, "-1 Invalid value for option `timeout': "
+				SEND_RESPONSE (fh, "-1 Invalid value for option `timeout': "
 						"%s\n", opt_value);
 				strarray_free (plugins, plugins_num);
 				strarray_free (identifiers, identifiers_num);
@@ -114,7 +119,7 @@ int handle_flush (FILE *fh, char *buffer)
 		}
 		else
 		{
-			PRINT_TO_SOCK (fh, "-1 Cannot parse option %s\n", opt_key);
+			SEND_RESPONSE (fh, "-1 Cannot parse option %s\n", opt_key);
 			strarray_free (plugins, plugins_num);
 			strarray_free (identifiers, identifiers_num);
 			return (-1);
@@ -146,14 +151,18 @@ int handle_flush (FILE *fh, char *buffer)
 				error++;
 		}
 	}
-
-	PRINT_TO_SOCK (fh, "0 Done: %i successful, %i errors\n",
-			success, error);
+    
+    // only send a response to file handles that may be listening
+    if (fh)
+    {
+        SEND_RESPONSE (fh, "0 Done: %i successful, %i errors\n",
+                       success, error);
+    }
 
 	strarray_free (plugins, plugins_num);
 	strarray_free (identifiers, identifiers_num);
 	return (0);
-#undef PRINT_TO_SOCK
+#undef SEND_RESPONSE
 } /* int handle_flush */
 
 /* vim: set sw=4 ts=4 tw=78 noexpandtab : */

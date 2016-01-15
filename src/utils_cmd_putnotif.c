@@ -30,16 +30,23 @@
 
 #include "utils_parse_option.h"
 
-#define print_to_socket(fh, ...) \
-  do { \
-    if (fprintf (fh, __VA_ARGS__) < 0) { \
-      char errbuf[1024]; \
-      WARNING ("handle_putnotif: failed to write to socket #%i: %s", \
-          fileno (fh), sstrerror (errno, errbuf, sizeof (errbuf))); \
-      return -1; \
+#define SEND_RESPONSE(fh, ...) \
+    if (fh) \
+    { \
+        do { \
+            if (fprintf (fh, __VA_ARGS__) < 0) { \
+                char errbuf[1024]; \
+                WARNING ("handle_putval: failed to write to socket #%i: %s", \
+                fileno (fh), sstrerror (errno, errbuf, sizeof (errbuf))); \
+                return -1; \
+            } \
+            fflush(fh); \
+        } while (0); \
     } \
-    fflush(fh); \
-  } while (0)
+    else \
+    { \
+        ERROR(__VA_ARGS__); \
+    }
 
 static int set_option_severity (notification_t *n, const char *value)
 {
@@ -121,7 +128,7 @@ int handle_putnotif (FILE *fh, char *buffer)
   notification_t n;
   int status;
 
-  if ((fh == NULL) || (buffer == NULL))
+  if (buffer == NULL)
     return (-1);
 
   DEBUG ("utils_cmd_putnotif: handle_putnotif (fh = %p, buffer = %s);",
@@ -131,14 +138,14 @@ int handle_putnotif (FILE *fh, char *buffer)
   status = parse_string (&buffer, &command);
   if (status != 0)
   {
-    print_to_socket (fh, "-1 Cannot parse command.\n");
+    SEND_RESPONSE (fh, "-1 Cannot parse command.\n");
     return (-1);
   }
   assert (command != NULL);
 
   if (strcasecmp ("PUTNOTIF", command) != 0)
   {
-    print_to_socket (fh, "-1 Unexpected command: `%s'.\n", command);
+    SEND_RESPONSE (fh, "-1 Unexpected command: `%s'.\n", command);
     return (-1);
   }
 
@@ -153,14 +160,14 @@ int handle_putnotif (FILE *fh, char *buffer)
     status = parse_option (&buffer, &key, &value);
     if (status != 0)
     {
-      print_to_socket (fh, "-1 Malformed option.\n");
+      SEND_RESPONSE (fh, "-1 Malformed option.\n");
       break;
     }
 
     status = set_option (&n, key, value);
     if (status != 0)
     {
-      print_to_socket (fh, "-1 Error parsing option `%s'\n", key);
+      SEND_RESPONSE (fh, "-1 Error parsing option `%s'\n", key);
       break;
     }
   } /* for (i) */
@@ -168,17 +175,17 @@ int handle_putnotif (FILE *fh, char *buffer)
   /* Check for required fields and complain if anything is missing. */
   if ((status == 0) && (n.severity == 0))
   {
-    print_to_socket (fh, "-1 Option `severity' missing.\n");
+    SEND_RESPONSE (fh, "-1 Option `severity' missing.\n");
     status = -1;
   }
   if ((status == 0) && (n.time == 0))
   {
-    print_to_socket (fh, "-1 Option `time' missing.\n");
+    SEND_RESPONSE (fh, "-1 Option `time' missing.\n");
     status = -1;
   }
   if ((status == 0) && (strlen (n.message) == 0))
   {
-    print_to_socket (fh, "-1 No message or message of length 0 given.\n");
+    SEND_RESPONSE (fh, "-1 No message or message of length 0 given.\n");
     status = -1;
   }
 
@@ -187,7 +194,12 @@ int handle_putnotif (FILE *fh, char *buffer)
   if (status == 0)
   {
     plugin_dispatch_notification (&n);
-    print_to_socket (fh, "0 Success\n");
+
+    // only send a response to file handles that may be listening
+    if (fh)
+    {
+        SEND_RESPONSE (fh, "0 Success\n");
+    }
   }
 
   return (0);

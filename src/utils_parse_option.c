@@ -106,8 +106,8 @@ int parse_string (char **ret_buffer, char **ret_string)
 /*
  * parse_option
  * ------------
- *  Parses an ``option'' as used with the unixsock and exec commands. An
- *  option is of the form:
+ *  Parses an ``option'' as used with the unixfifo, unixsock and exec commands.
+ *    An option is of the form:
  *    name0="value"
  *    name1="value with \"quotes\""
  *    name2="value \\ backslash"

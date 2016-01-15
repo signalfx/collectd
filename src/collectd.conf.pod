@@ -6709,6 +6709,27 @@ by this plugin are:
 
 =back
 
+=head2 Plugin C<unixfifo>
+
+=over 4
+
+=item B<FifoFile> I<Path>
+
+Sets the fifo-file which is to be created.
+
+=item B<FifoGroup> I<Group>
+
+If running as root change the group of the UNIX-fifo after it has been
+created. Defaults to B<collectd>.
+
+=item B<FifoPerms> I<Permissions>
+
+Change the file permissions of the UNIX-fifo after it has been created. The
+permissions must be given as a numeric, octal value as you would pass to
+L<chmod(1)>. Defaults to B<0622>.
+
+=back
+
 =head2 Plugin C<unixsock>
 
 =over 4

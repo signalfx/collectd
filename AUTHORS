@@ -121,6 +121,9 @@ Jason Pepas <cell at ices.utexas.edu>
 J. Javier Maestro <jjmaestro at ieee.org>
  - Write-Graphite plugin: UDP support and LogSendErrors flag.
 
+Jeff Adams <jbadams at signalfx.com>
+- unix-fifo plugin.
+
 Jeremy Katz <jeremy at katzbox.net>
  - percentage reporting in memory and swap plugins.
  - zookeeper plugin.

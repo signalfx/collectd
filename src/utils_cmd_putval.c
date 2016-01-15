@@ -30,17 +30,23 @@
 
 #include "utils_parse_option.h"
 
-#define print_to_socket(fh, ...) \
-    do { \
-        if (fprintf (fh, __VA_ARGS__) < 0) { \
-            char errbuf[1024]; \
-            WARNING ("handle_putval: failed to write to socket #%i: %s", \
-                    fileno (fh), sstrerror (errno, errbuf, sizeof (errbuf))); \
-            sfree (vl.values); \
-            return -1; \
-        } \
-        fflush(fh); \
-    } while (0)
+#define SEND_RESPONSE(fh, ...) \
+    if (fh) \
+    { \
+        do { \
+            if (fprintf (fh, __VA_ARGS__) < 0) { \
+                char errbuf[1024]; \
+                WARNING ("handle_putval: failed to write to socket #%i: %s", \
+                fileno (fh), sstrerror (errno, errbuf, sizeof (errbuf))); \
+                return -1; \
+            } \
+            fflush(fh); \
+        } while (0); \
+    } \
+    else \
+    { \
+        ERROR(__VA_ARGS__); \
+    }
 
 static int set_option (value_list_t *vl, const char *key, const char *value)
 {
@@ -83,6 +89,9 @@ int handle_putval (FILE *fh, char *buffer)
 	const data_set_t *ds;
 	value_list_t vl = VALUE_LIST_INIT;
 	vl.values = NULL;
+    
+    if (buffer == NULL)
+        return (-1);
 
 	DEBUG ("utils_cmd_putval: handle_putval (fh = %p, buffer = %s);",
 			(void *) fh, buffer);
@@ -91,14 +100,14 @@ int handle_putval (FILE *fh, char *buffer)
 	status = parse_string (&buffer, &command);
 	if (status != 0)
 	{
-		print_to_socket (fh, "-1 Cannot parse command.\n");
+		SEND_RESPONSE (fh, "-1 Cannot parse command.\n");
 		return (-1);
 	}
 	assert (command != NULL);
 
 	if (strcasecmp ("PUTVAL", command) != 0)
 	{
-		print_to_socket (fh, "-1 Unexpected command: `%s'.\n", command);
+		SEND_RESPONSE (fh, "-1 Unexpected command: `%s'.\n", command);
 		return (-1);
 	}
 
@@ -106,7 +115,7 @@ int handle_putval (FILE *fh, char *buffer)
 	status = parse_string (&buffer, &identifier);
 	if (status != 0)
 	{
-		print_to_socket (fh, "-1 Cannot parse identifier.\n");
+		SEND_RESPONSE (fh, "-1 Cannot parse identifier.\n");
 		return (-1);
 	}
 	assert (identifier != NULL);
@@ -122,7 +131,7 @@ int handle_putval (FILE *fh, char *buffer)
 	{
 		DEBUG ("handle_putval: Cannot parse identifier `%s'.",
 				identifier);
-		print_to_socket (fh, "-1 Cannot parse identifier `%s'.\n",
+		SEND_RESPONSE (fh, "-1 Cannot parse identifier `%s'.\n",
 				identifier);
 		sfree (identifier_copy);
 		return (-1);
@@ -135,7 +144,7 @@ int handle_putval (FILE *fh, char *buffer)
 			|| ((type_instance != NULL)
 				&& (strlen (type_instance) >= sizeof (vl.type_instance))))
 	{
-		print_to_socket (fh, "-1 Identifier too long.\n");
+		SEND_RESPONSE (fh, "-1 Identifier too long.\n");
 		sfree (identifier_copy);
 		return (-1);
 	}
@@ -150,7 +159,7 @@ int handle_putval (FILE *fh, char *buffer)
 
 	ds = plugin_get_ds (type);
 	if (ds == NULL) {
-		print_to_socket (fh, "-1 Type `%s' isn't defined.\n", type);
+		SEND_RESPONSE (fh, "-1 Type `%s' isn't defined.\n", type);
 		sfree (identifier_copy);
 		return (-1);
 	}
@@ -165,7 +174,7 @@ int handle_putval (FILE *fh, char *buffer)
 	vl.values = (value_t *) malloc (vl.values_len * sizeof (value_t));
 	if (vl.values == NULL)
 	{
-		print_to_socket (fh, "-1 malloc failed.\n");
+		SEND_RESPONSE (fh, "-1 malloc failed.\n");
 		return (-1);
 	}
 
@@ -181,7 +190,7 @@ int handle_putval (FILE *fh, char *buffer)
 		{
 			/* parse_option failed, buffer has been modified.
 			 * => we need to abort */
-			print_to_socket (fh, "-1 Misformatted option.\n");
+			SEND_RESPONSE (fh, "-1 Misformatted option.\n");
 			sfree (vl.values);
 			return (-1);
 		}
@@ -198,7 +207,7 @@ int handle_putval (FILE *fh, char *buffer)
 		status = parse_string (&buffer, &string);
 		if (status != 0)
 		{
-			print_to_socket (fh, "-1 Misformatted value.\n");
+			SEND_RESPONSE (fh, "-1 Misformatted value.\n");
 			sfree (vl.values);
 			return (-1);
 		}
@@ -207,7 +216,7 @@ int handle_putval (FILE *fh, char *buffer)
 		status = parse_values (string, &vl, ds);
 		if (status != 0)
 		{
-			print_to_socket (fh, "-1 Parsing the values string failed.\n");
+			SEND_RESPONSE (fh, "-1 Parsing the values string failed.\n");
 			sfree (vl.values);
 			return (-1);
 		}
@@ -217,9 +226,13 @@ int handle_putval (FILE *fh, char *buffer)
 	} /* while (*buffer != 0) */
 	/* Done parsing the options. */
 
-	print_to_socket (fh, "0 Success: %i %s been dispatched.\n",
-			values_submitted,
-			(values_submitted == 1) ? "value has" : "values have");
+    // only send a response to file handles that may be listening
+    if (fh)
+    {
+        SEND_RESPONSE (fh, "0 Success: %i %s been dispatched.\n",
+                       values_submitted,
+                       (values_submitted == 1) ? "value has" : "values have");
+    }
 
 	sfree (vl.values);
 	return (0);
