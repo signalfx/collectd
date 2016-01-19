@@ -24,7 +24,7 @@ function do_cache() {
   clone_repo git@github.com:signalfx/collectd-build-rpm.git "$BASE_DIR"/collectd-build-rpm origin/testci
 }
 
-# Test phase of circleci
+# Test phase of circleci - this does builds
 function do_test() {
 
   . "$HOME/circleutil/scripts/common.sh"
