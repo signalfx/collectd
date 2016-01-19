@@ -13,10 +13,9 @@ machine:
 
 dependencies:
   override:
-    - ./circle.sh cache > >(tee $CIRCLE_ARTIFACTS/test.stdout.txt) 2> >(tee $CIRCLE_ARTIFACTS/test.stderr.txt >&2):
-      parallel: true
+    - ./circle.sh cache > >(tee $CIRCLE_ARTIFACTS/test.stdout.txt) 2> >(tee $CIRCLE_ARTIFACTS/test.stderr.txt >&2)
  
 test:
   override:
-    - case $CIRCLE_NODE_INDEX in 0) ./circle.sh cache epel-6-x86_64 centos-6 quay.io/signalfuse/collectd-build-centos > >(tee $CIRCLE_ARTIFACTS/cache.centos-6.stdout.txt 2> >(tee $CIRCLE_ARTIFACTS/cache.centos6.stderr.txt >&2) ;; 1) ./circle.sh cache ubuntu1204 precise none > >(tee $CIRCLE_ARTIFACTS/cache.ubuntu1204.stdout.txt2> >(tee $CIRCLE_ARTIFACTS/cache.ubuntu1204.stderr.txt >&2) ;; esac:
+    - case $CIRCLE_NODE_INDEX in 0) ./circle.sh test epel-6-x86_64 centos-6 quay.io/signalfuse/collectd-build-centos > >(tee $CIRCLE_ARTIFACTS/cache.centos-6.stdout.txt 2> >(tee $CIRCLE_ARTIFACTS/cache.centos6.stderr.txt >&2) ;; 1) ./circle.sh cache ubuntu1204 precise none > >(tee $CIRCLE_ARTIFACTS/cache.ubuntu1204.stdout.txt2> >(tee $CIRCLE_ARTIFACTS/cache.ubuntu1204.stderr.txt >&2) ;; esac:
       parallel: true
