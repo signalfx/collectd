@@ -14,8 +14,8 @@ machine:
 dependencies:
   override:
     - ./circle.sh cache > >(tee $CIRCLE_ARTIFACTS/test.stdout.txt) 2> >(tee $CIRCLE_ARTIFACTS/test.stderr.txt >&2)
- 
+
 test:
   override:
     - case $CIRCLE_NODE_INDEX in 0) echo "hi!" ;; 1) echo "hello!" ;; esac:
-      parallel: true
+        parallel: true
