@@ -5,7 +5,7 @@ set -o pipefail
 CIRCLEUTIL_TAG="v1.37"
 
 export CIRCLE_ARTIFACTS="${CIRCLE_ARTIFACTS-/tmp}"
-export BASE_DIR="$HOME/collectd"
+export BASE_DIR="$HOME"
 
 # Cache phase of circleci
 function do_cache() {
@@ -20,33 +20,25 @@ function do_cache() {
   )
   . "$HOME/circleutil/scripts/common.sh"
 
-  export SFX_BUILD_PLATFORM="$1"
-  export DISTRIBUTION="$2"
-  export SFX_BUILD_DOCKER="$3"
-  if [ "$SFX_BUILD_DOCKER" == "none" ]; then
-    export JOB_NAME=cr_"$CIRCLE_PROJECT_REPONAME"_build_"$SFX_BUILD_PLATFORM"
-  else
-    export JOB_NAME=cr-"$CIRCLE_PROJECT_REPONAME"-rpm-"$DISTRIBUTION"
-  fi
-
-  echo "SFX_BUILD_PLATFORM is $SFX_BUILD_PLATFORM"
-  echo "DISTRIBUTION is $DISTRIBUTION"
-  echo "SFX_BUILD_DOCKER is $SFX_BUILD_DOCKER"
-  if [ "$SFX_BUILD_DOCKER" == "none" ]; then
-    clone_repo git@github.com:signalfx/collectd-build-ubuntu.git "$BASE_DIR"/collectd-build-ubuntu origin/testci
-    "$BASE_DIR"/collectd-build-ubuntu/build-collectd/sfx_scripts/jenkins-build
-  else
-    clone_repo git@github.com:signalfx/collectd-build-rpm.git "$BASE_DIR"/collectd-build-rpm origin/testc
-    "$BASE_DIR"/collectd-build-rpm/build-collectd/build/jenkins-build  
-  fi
-  
+  clone_repo git@github.com:signalfx/collectd-build-ubuntu.git "$BASE_DIR"/collectd-build-ubuntu origin/testci
+  clone_repo git@github.com:signalfx/collectd-build-rpm.git "$BASE_DIR"/collectd-build-rpm origin/testci
 }
 
 # Test phase of circleci
 function do_test() {
 
   . "$HOME/circleutil/scripts/common.sh"
-  echo "no testing for now!!!"
+
+  export SFX_BUILD_PLATFORM="$1"
+  export DISTRIBUTION="$2"
+  export SFX_BUILD_DOCKER="$3"
+  if [ "$SFX_BUILD_DOCKER" == "none" ]; then
+    export JOB_NAME=cr_"$CIRCLE_PROJECT_REPONAME"_build_"$SFX_BUILD_PLATFORM"
+    "$BASE_DIR"/collectd-build-ubuntu/build-collectd/sfx_scripts/jenkins-build
+  else
+    export JOB_NAME=cr-"$CIRCLE_PROJECT_REPONAME"-rpm-"$DISTRIBUTION"
+    "$BASE_DIR"/collectd-build-rpm/build-collectd/build/jenkins-build  
+  fi
 }
 
 # Deploy phase of circleci
@@ -57,17 +49,17 @@ function do_deploy() {
 }
 
 function do_all() {
-  do_cache "$2" "$3" "$4"
-  do_test
+  do_cache
+  do_test "$2" "$3" "$4"
   do_deploy
 }
 
 case "$1" in
   cache)
-    do_cache "$2" "$3" "$4"
+    do_cache 
     ;;
   test)
-    do_test
+    do_test "$2" "$3" "$4"
     ;;
   deploy)
     do_deploy
