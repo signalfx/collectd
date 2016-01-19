@@ -17,5 +17,5 @@ dependencies:
  
 test:
   override:
-    - case $CIRCLE_NODE_INDEX in 0) ./circle.sh test epel-6-x86_64 centos-6 quay.io/signalfuse/collectd-build-centos > >(tee $CIRCLE_ARTIFACTS/cache.centos-6.stdout.txt 2> >(tee $CIRCLE_ARTIFACTS/cache.centos6.stderr.txt >&2) ;; 1) ./circle.sh cache ubuntu1204 precise none > >(tee $CIRCLE_ARTIFACTS/cache.ubuntu1204.stdout.txt2> >(tee $CIRCLE_ARTIFACTS/cache.ubuntu1204.stderr.txt >&2) ;; esac:
+    - case $CIRCLE_NODE_INDEX in 0) echo "hi!" ;; 1) echo "hello!" ;; esac:
       parallel: true
