@@ -17,6 +17,7 @@ dependencies:
 
 test:
   override:
-    - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS quay.io
+    - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS quay.io:
+        parallel: true
     - case $CIRCLE_NODE_INDEX in 0) ./circle.sh test epel-6-x86_64 centos-6 quay.io/signalfuse/collectd-build-centos ;; 1) ./circle.sh test ubuntu1204 precise none ;; esac:
         parallel: true
