@@ -17,5 +17,5 @@ dependencies:
 
 test:
   override:
-    - case $CIRCLE_NODE_INDEX in 0) echo "hi!" ;; 1) echo "hello!" ;; esac:
+    - case $CIRCLE_NODE_INDEX in 0) touch $HOME/foo.sh ;; 1) touch $HOME/bar.sh ;; esac:
         parallel: true
