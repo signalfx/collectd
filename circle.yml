@@ -17,5 +17,5 @@ dependencies:
 
 test:
   override:
-    - case $CIRCLE_NODE_INDEX in 0) echo "hi!" > >(tee $CIRCLE_ARTIFACTS/testhi.stdout.txt) 2> >(tee $CIRCLE_ARTIFACTS/testhi.stderr.txt >&2) ;; 1) echo "hello!" > >(tee $CIRCLE_ARTIFACTS/testhello.stdout.txt) 2> >(tee $CIRCLE_ARTIFACTS/testhello.stderr.txt >&2) ;; esac:
+    - case $CIRCLE_NODE_INDEX in 0) echo "hi!" ;; 1) echo "hello!" ;; esac:
         parallel: true
