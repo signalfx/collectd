@@ -7,7 +7,7 @@ CIRCLEUTIL_TAG="v1.37"
 export CIRCLE_ARTIFACTS="${CIRCLE_ARTIFACTS-/tmp}"
 export BASE_DIR="$HOME"
 
-# Cache phase of circleci
+# Cache phase of circleci - This doesn't do builds because parallelization doesn't work in the cache phase
 function do_cache() {
   echo "BASE_DIR IS $BASE_DIR"
 
