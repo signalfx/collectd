@@ -1,3 +1,9 @@
+2016-01-07, Version 5.5.0-sfx8
+        * Log http error codes other than 200.
+        * plugin.c: emit log message when plugin loading succeeds
+        * Support for call the flush callback at regular intervals using the read plugin callback.
+        * add notifications to write_http
+        * increase DATA_MAX_NAME_LEN from to 1024
 2015-05-27, Version 5.5.0
 	* Build system: Ability to make out-of-tree builds has been fixed.
 	  Thanks to Vincent Bernat. #792
