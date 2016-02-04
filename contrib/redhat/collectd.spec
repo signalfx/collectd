@@ -216,7 +216,7 @@
 
 Summary:	statistics collection and monitoring daemon
 Name:		collectd
-Version:	5.5.0
+Version:	5.5.1
 Release:	1%{?dist}
 URL:		http://collectd.org
 Source:		http://collectd.org/files/%{name}-%{version}.tar.bz2
@@ -2334,6 +2334,9 @@ fi
 %doc contrib/
 
 %changelog
+* Thu Feb 26 2016 SignalFx <support+rpm@signalfx.com> 5.5.1-sfx0
+- Package for 5.5.1
+
 * Thu Jan 07 2016 SignalFx <support+rpm@signalfx.com> 5.5.0-sfx7
 - Log http error codes other than 200
 - plugin.c: emit log message when plugin loading succeeds
