@@ -97,8 +97,9 @@
 #define COLLECTD_CPU_STATE_SOFTIRQ 6
 #define COLLECTD_CPU_STATE_STEAL 7
 #define COLLECTD_CPU_STATE_IDLE 8
-#define COLLECTD_CPU_STATE_ACTIVE 9 /* sum of (!idle) */
-#define COLLECTD_CPU_STATE_MAX 10 /* #states */
+#define COLLECTD_CPU_STATE_UTILIZATION 9  /* total non-idle jiffies */
+#define COLLECTD_CPU_STATE_ACTIVE 10 /* sum of (!idle) as a percentage */
+#define COLLECTD_CPU_STATE_MAX 11 /* #states */
 
 #if HAVE_STATGRAB_H
 # include <statgrab.h>
@@ -124,6 +125,7 @@ static const char *cpu_state_names[] = {
 	"softirq",
 	"steal",
 	"idle",
+	"utilization", 
 	"active"
 };
 
@@ -191,12 +193,14 @@ static size_t global_cpu_num = 0;
 static _Bool report_by_cpu = 1;
 static _Bool report_by_state = 1;
 static _Bool report_percent = 0;
+static _Bool report_utilized = 0;
 
 static const char *config_keys[] =
 {
 	"ReportByCpu",
 	"ReportByState",
-	"ValuesPercentage"
+	"ValuesPercentage",
+	"ReportUtilizedState"
 };
 static int config_keys_num = STATIC_ARRAY_SIZE (config_keys);
 
@@ -208,6 +212,8 @@ static int cpu_config (char const *key, char const *value) /* {{{ */
 		report_percent = IS_TRUE (value) ? 1 : 0;
 	else if (strcasecmp (key, "ReportByState") == 0)
 		report_by_state = IS_TRUE (value) ? 1 : 0;
+	else if (strcasecmp (key, "ReportUtilizedState") == 0)
+		report_utilized = IS_TRUE (value) ? 1 : 0;
 	else
 		return (-1);
 
@@ -342,7 +348,8 @@ static void submit_percent(int cpu_num, int cpu_state, gauge_t percent)
 		return;
 
 	value.gauge = percent;
-	submit_value (cpu_num, cpu_state, "percent", value);
+    submit_value (cpu_num, cpu_state, "percent", value);
+
 }
 
 static void submit_derive(int cpu_num, int cpu_state, derive_t derive)
@@ -397,7 +404,7 @@ static void aggregate (gauge_t *sum_by_state) /* {{{ */
 {
 	size_t cpu_num;
 	size_t state;
-
+	
 	for (state = 0; state < COLLECTD_CPU_STATE_MAX; state++)
 		sum_by_state[state] = NAN;
 
@@ -438,6 +445,7 @@ static void cpu_commit_one (int cpu_num, /* {{{ */
 	sum = rates[COLLECTD_CPU_STATE_ACTIVE];
 	RATE_ADD (sum, rates[COLLECTD_CPU_STATE_IDLE]);
 
+	
 	if (!report_by_state)
 	{
 		gauge_t percent = 100.0 * rates[COLLECTD_CPU_STATE_ACTIVE] / sum;
@@ -467,22 +475,41 @@ static void cpu_reset (void) /* {{{ */
 /* Legacy behavior: Dispatches the raw derive values without any aggregation. */
 static void cpu_commit_without_aggregation (void) /* {{{ */
 {
-	int state;
-
-	for (state = 0; state < COLLECTD_CPU_STATE_ACTIVE; state++)
+	int state = 0;
+	derive_t total_utilized_jiffies_per_cpu = 0;
+	size_t cpu_num = 0;
+	
+	for (cpu_num = 0; cpu_num < global_cpu_num; cpu_num++) 
 	{
-		size_t cpu_num;
-
-		for (cpu_num = 0; cpu_num < global_cpu_num; cpu_num++)
+		
+		for (state = 0; state < COLLECTD_CPU_STATE_ACTIVE; state++)
 		{
 			cpu_state_t *s = get_cpu_state (cpu_num, state);
-
-			if (!s->has_value)
+				
+			if (!s->has_value && state != COLLECTD_CPU_STATE_UTILIZATION)	
 				continue;
 
-			submit_derive ((int) cpu_num, (int) state, s->conv.last_value.derive);
+			/* Don't add idle or utilized to our running total of all utilized states */
+			if (state < COLLECTD_CPU_STATE_IDLE)           
+				RATE_ADD(total_utilized_jiffies_per_cpu,s->conv.last_value.derive);
+			
+			/* Submit for all CPU states User..Idle */
+			if (state != COLLECTD_CPU_STATE_UTILIZATION)
+				submit_derive ((int) cpu_num, (int) state, s->conv.last_value.derive);
+			
+			/* Submit for CPU state Utilized if configured to do so */
+			else
+			{	
+				if (report_utilized)
+				{
+					submit_derive ((int) cpu_num, (int) state,total_utilized_jiffies_per_cpu);
+					total_utilized_jiffies_per_cpu = 0;
+				}
+			}
 		}
+		
 	}
+	
 } /* }}} void cpu_commit_without_aggregation */
 
 /* Aggregates the internal state and dispatches the metrics. */
@@ -493,12 +520,14 @@ static void cpu_commit (void) /* {{{ */
 	};
 	size_t cpu_num;
 
-	if (report_by_state && report_by_cpu && !report_percent)
+	
+	if (report_by_state && report_by_cpu && !report_percent)	
 	{
 		cpu_commit_without_aggregation ();
 		return;
 	}
 
+	
 	aggregate (global_rates);
 
 	if (!report_by_cpu)
@@ -506,6 +535,7 @@ static void cpu_commit (void) /* {{{ */
 		cpu_commit_one (-1, global_rates);
 		return;
 	}
+
 
 	for (cpu_num = 0; cpu_num < global_cpu_num; cpu_num++)
 	{
@@ -515,10 +545,16 @@ static void cpu_commit (void) /* {{{ */
 		};
 		size_t state;
 
+
+		
 		for (state = 0; state < COLLECTD_CPU_STATE_MAX; state++)
+		{
+			
 			if (this_cpu_states[state].has_value)
 				local_rates[state] = this_cpu_states[state].rate;
+		}
 
+		
 		cpu_commit_one ((int) cpu_num, local_rates);
 	}
 } /* }}} void cpu_commit */
@@ -533,6 +569,7 @@ static int cpu_stage (size_t cpu_num, size_t state, derive_t d, cdtime_t now) /*
 	gauge_t rate = NAN;
 	value_t val = {.derive = d};
 
+	
 	if (state >= COLLECTD_CPU_STATE_ACTIVE)
 		return (EINVAL);
 
@@ -602,7 +639,7 @@ static int cpu_read (void)
 
 	char *fields[9];
 	int numfields;
-
+	
 	if ((fh = fopen ("/proc/stat", "r")) == NULL)
 	{
 		char errbuf[1024];
@@ -619,11 +656,12 @@ static int cpu_read (void)
 			continue;
 
 		numfields = strsplit (buf, fields, 9);
+		
 		if (numfields < 5)
 			continue;
 
 		cpu = atoi (fields[0] + 3);
-
+		
 		cpu_stage (cpu, COLLECTD_CPU_STATE_USER,   (derive_t) atoll(fields[1]), now);
 		cpu_stage (cpu, COLLECTD_CPU_STATE_NICE,   (derive_t) atoll(fields[2]), now);
 		cpu_stage (cpu, COLLECTD_CPU_STATE_SYSTEM, (derive_t) atoll(fields[3]), now);
@@ -638,6 +676,8 @@ static int cpu_read (void)
 			if (numfields >= 9)
 				cpu_stage (cpu, COLLECTD_CPU_STATE_STEAL, (derive_t) atoll(fields[8]), now);
 		}
+		
+		
 	}
 	fclose (fh);
 /* }}} #endif defined(KERNEL_LINUX) */
@@ -645,7 +685,7 @@ static int cpu_read (void)
 #elif defined(HAVE_LIBKSTAT) /* {{{ */
 	int cpu;
 	static cpu_stat_t cs;
-
+	
 	if (kc == NULL)
 		return (-1);
 
@@ -666,7 +706,7 @@ static int cpu_read (void)
 	size_t cpuinfo_size;
 	int status;
 	int i;
-
+	
 	if (numcpu < 1)
 	{
 		ERROR ("cpu plugin: Could not determine number of "
@@ -677,6 +717,7 @@ static int cpu_read (void)
 	memset (cpuinfo, 0, sizeof (cpuinfo));
 
 #if defined(KERN_CPTIME2)
+	
 	if (numcpu > 1) {
 		for (i = 0; i < numcpu; i++) {
 			int mib[] = {CTL_KERN, KERN_CPTIME2, i};
@@ -698,7 +739,7 @@ static int cpu_read (void)
 	{
 		int mib[] = {CTL_KERN, KERN_CPTIME};
 		long cpuinfo_tmp[CPUSTATES];
-
+		
 		cpuinfo_size = sizeof(cpuinfo_tmp);
 
 		status = sysctl (mib, STATIC_ARRAY_SIZE (mib),
@@ -753,7 +794,7 @@ static int cpu_read (void)
 #elif defined(HAVE_SYSCTLBYNAME) /* {{{ */
 	long cpuinfo[CPUSTATES];
 	size_t cpuinfo_size;
-
+	
 	cpuinfo_size = sizeof (cpuinfo);
 
 	if (sysctlbyname("kern.cp_time", &cpuinfo, &cpuinfo_size, NULL, 0) < 0)
@@ -774,7 +815,7 @@ static int cpu_read (void)
 #elif defined(HAVE_LIBSTATGRAB) /* {{{ */
 	sg_cpu_stats *cs;
 	cs = sg_get_cpu_stats ();
-
+	
 	if (cs == NULL)
 	{
 		ERROR ("cpu plugin: sg_get_cpu_stats failed.");
@@ -792,7 +833,7 @@ static int cpu_read (void)
 #elif defined(HAVE_PERFSTAT) /* {{{ */
 	perfstat_id_t id;
 	int i, cpus;
-
+	
 	numcpu =  perfstat_cpu(NULL, NULL, sizeof(perfstat_cpu_t), 0);
 	if(numcpu == -1)
 	{
@@ -827,7 +868,7 @@ static int cpu_read (void)
 		cpu_stage (i, COLLECTD_CPU_STATE_WAIT,   (derive_t) perfcpu[i].wait, now);
 	}
 #endif /* }}} HAVE_PERFSTAT */
-
+	
 	cpu_commit ();
 	cpu_reset ();
 	return (0);
