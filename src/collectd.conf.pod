@@ -2522,6 +2522,23 @@ do that: By setting B<IgnoreSelected> to I<true> the effect of
 B<Interface> is inverted: All selected interfaces are ignored and all
 other interfaces are collected.
 
+It is possible to use regular expressions to match interface names, if the
+name is surrounded by I</.../> and collectd was compiled with support for
+regexps. This is useful if there's a need to collect (or ignore) data
+for a group of interfaces that are similarly named, without the need to
+explicitly list all of them (especially useful if the list is dynamic).
+Example:
+
+ Interface "lo"
+ Interface "/^veth/"
+ Interface "/^tun[0-9]+/"
+ IgnoreSelected "true"
+
+This will ignore the loopback interface, all interfaces with names starting
+with I<veth> and all interfaces with names starting with I<tun> followed by
+at least one digit.
+
+
 =back
 
 =head2 Plugin C<ipmi>
@@ -4298,6 +4315,18 @@ Default: C<Collectd notify: %s@%s>
 =back
 
 =head2 Plugin C<ntpd>
+
+The C<ntpd> plugin collects per-peer ntpd data such as time offset and time
+dispersion.
+
+For talking to B<ntpd>, it mimics what the B<ntpdc> control program does on
+wire - using B<mode 7> specific requests. This mode is deprecated with
+newer B<ntpd> releases (4.2.7p230 and later). For the C<ntpd> plugin to work
+correctly with them, the ntp daemon must be explicitly configured to
+enable B<mode 7> (which is disabled by default). Refer to the I<ntp.conf(5)>
+manual page for details.
+
+Available configuration options for the C<ntpd> plugin:
 
 =over 4
 
