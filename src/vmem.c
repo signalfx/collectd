@@ -28,7 +28,14 @@
 #include "common.h"
 #include "plugin.h"
 
-#if KERNEL_LINUX
+#if KERNEL_DARWIN
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <mach/mach.h>
+#endif
+
+#if KERNEL_LINUX || KERNEL_DARWIN
 static const char *config_keys[] =
 {
   "Verbose"
@@ -36,10 +43,10 @@ static const char *config_keys[] =
 static int config_keys_num = STATIC_ARRAY_SIZE (config_keys);
 
 static int verbose_output = 0;
-/* #endif KERNEL_LINUX */
+/* #endif KERNEL_LINUX || KERNEL_DARWIN */
 
 #else
-# error "No applicable input method."
+#error "No applicable input method."
 #endif /* HAVE_LIBSTATGRAB */
 
 static void submit (const char *plugin_instance, const char *type,
@@ -72,11 +79,13 @@ static void submit_two (const char *plugin_instance, const char *type,
   submit (plugin_instance, type, type_instance, values, 2);
 } /* void submit_one */
 
+#if KERNEL_LINUX
 static void submit_one (const char *plugin_instance, const char *type,
     const char *type_instance, value_t value)
 {
   submit (plugin_instance, type, type_instance, &value, 1);
 } /* void submit_one */
+#endif
 
 static int vmem_config (const char *key, const char *value)
 {
@@ -295,6 +304,28 @@ static int vmem_read (void)
     submit_two (NULL, "vmpage_io", "swap", pswpin, pswpout);
 #endif /* KERNEL_LINUX */
 
+#if KERNEL_DARWIN
+  
+  vm_statistics64_data_t vm_stat;
+  unsigned int           count = HOST_VM_INFO64_COUNT;
+  int64_t                pageins, pageouts, swapins, swapouts;
+  kern_return_t          ret;
+
+  if ((ret = host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)&vm_stat, &count) != KERN_SUCCESS)) {
+    ERROR("host_statistics64 - failed to get statistics. error %d\n", ret);
+    return (-1);
+  }
+
+  pageins       = vm_stat.pageins;
+  pageouts      = vm_stat.pageouts;
+  swapins       = vm_stat.swapins;
+  swapouts      = vm_stat.swapouts;
+  
+  submit_two (NULL, "vmpage_io", "swap", swapins, swapouts);
+  submit_two (NULL, "vmpage_io", "memory", pageins, pageouts);
+
+#endif /* KERNEL_DARWIN */ 
+  
   return (0);
 } /* int vmem_read */
 
