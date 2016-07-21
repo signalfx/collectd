@@ -87,6 +87,13 @@ pkglib_LTLIBRARIES =
 BUILT_SOURCES =
 CLEANFILES =
 
+if BUILD_PLUGIN_AEU
+pkglib_LTLIBRARIES += aeu.la
+aeu_la_SOURCES = aeu.c utils_vl_lookup.c utils_vl_lookup.h
+aeu_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+aeu_la_LIBADD = -lm
+endif
+
 if BUILD_PLUGIN_AGGREGATION
 pkglib_LTLIBRARIES += aggregation.la
 aggregation_la_SOURCES = aggregation.c \

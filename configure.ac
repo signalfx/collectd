@@ -5231,6 +5231,7 @@ AC_COLLECTD([getifaddrs],[enable],  [feature], [getifaddrs under Linux])
 dependency_warning="no"
 dependency_error="no"
 
+plugin_aeu="yes"
 plugin_ascent="no"
 plugin_barometer="no"
 plugin_battery="no"
@@ -5611,6 +5612,7 @@ AC_ARG_ENABLE([all-plugins],
 
 m4_divert_once([HELP_ENABLE], [])
 
+AC_PLUGIN([aeu], [yes],                [AEU plugin])
 AC_PLUGIN([aggregation], [yes],                [Aggregation plugin])
 AC_PLUGIN([amqp],        [$with_librabbitmq],  [AMQP output plugin])
 AC_PLUGIN([apache],      [$with_libcurl],      [Apache httpd statistics])
@@ -5989,6 +5991,7 @@ Configuration:
     perl  . . . . . . . . $with_perl_bindings
 
   Modules:
+    aeu . . . . . . . . . $enable_aeu
     aggregation . . . . . $enable_aggregation
     amqp    . . . . . . . $enable_amqp
     apache  . . . . . . . $enable_apache
