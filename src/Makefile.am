@@ -64,7 +64,8 @@ collectdctl_LDADD += libcollectdclient/libcollectdclient.la
 collectdctl_DEPENDENCIES = libcollectdclient/libcollectdclient.la
 
 collectd_tg_SOURCES = collectd-tg.c
-collectd_tg_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/libcollectdclient/collectd -I$(top_builddir)/src/libcollectdclient/collectd
+collectd_tg_CPPFLAGS = $(AM_CPPFLAGS) \
+		       -I$(top_srcdir)/src/libcollectdclient/collectd -I$(top_builddir)/src/libcollectdclient/collectd
 collectd_tg_LDADD = daemon/libheap.la
 if BUILD_WITH_LIBSOCKET
 collectd_tg_LDADD += -lsocket
@@ -314,7 +315,9 @@ disk_la_CFLAGS += $(BUILD_WITH_LIBSTATGRAB_CFLAGS)
 disk_la_LIBADD += $(BUILD_WITH_LIBSTATGRAB_LDFLAGS)
 endif
 if BUILD_WITH_LIBUDEV
-disk_la_LIBADD += -ludev
+disk_la_CFLAGS += $(BUILD_WITH_LIBUDEV_CFLAGS)
+disk_la_LDFLAGS += $(BUILD_WITH_LIBUDEV_LDFLAGS)
+disk_la_LIBADD += $(BUILD_WITH_LIBUDEV_LIBS)
 endif
 if BUILD_WITH_PERFSTAT
 disk_la_LIBADD += -lperfstat
@@ -876,17 +879,17 @@ endif
 if BUILD_PLUGIN_RRDCACHED
 pkglib_LTLIBRARIES += rrdcached.la
 rrdcached_la_SOURCES = rrdcached.c utils_rrdcreate.c utils_rrdcreate.h
-rrdcached_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+rrdcached_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(BUILD_WITH_LIBRRD_LDFLAGS)
 rrdcached_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBRRD_CFLAGS)
-rrdcached_la_LIBADD = $(BUILD_WITH_LIBRRD_LDFLAGS)
+rrdcached_la_LIBADD = $(BUILD_WITH_LIBRRD_LIBS)
 endif
 
 if BUILD_PLUGIN_RRDTOOL
 pkglib_LTLIBRARIES += rrdtool.la
 rrdtool_la_SOURCES = rrdtool.c utils_rrdcreate.c utils_rrdcreate.h
-rrdtool_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+rrdtool_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(BUILD_WITH_LIBRRD_LDFLAGS)
 rrdtool_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBRRD_CFLAGS)
-rrdtool_la_LIBADD = $(BUILD_WITH_LIBRRD_LDFLAGS)
+rrdtool_la_LIBADD = $(BUILD_WITH_LIBRRD_LIBS)
 endif
 
 if BUILD_PLUGIN_SENSORS
@@ -915,9 +918,9 @@ if BUILD_PLUGIN_SMART
 if BUILD_WITH_LIBUDEV
 pkglib_LTLIBRARIES += smart.la
 smart_la_SOURCES = smart.c
-smart_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBATASMART_CPPFLAGS)
-smart_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(BUILD_WITH_LIBATASMART_LDFLAGS)
-smart_la_LIBADD = $(BUILD_WITH_LIBATASMART_LIBS) -ludev
+smart_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBATASMART_CPPFLAGS) $(BUILD_WITH_LIBUDEV_CFLAGS)
+smart_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(BUILD_WITH_LIBATASMART_LDFLAGS) $(BUILD_WITH_LIBUDEV_LDFLAGS)
+smart_la_LIBADD = $(BUILD_WITH_LIBATASMART_LIBS) $(BUILD_WITH_LIBUDEV_LIBS)
 endif
 endif
 
@@ -1374,9 +1377,15 @@ check_PROGRAMS = test_utils_mount test_utils_vl_lookup
 
 test_utils_mount_SOURCES = utils_mount_test.c testing.h
 test_utils_mount_LDADD = libmount.la daemon/libplugin_mock.la
+if BUILD_WITH_LIBKSTAT
+test_utils_mount_LDADD += -lkstat
+endif
 
 test_utils_vl_lookup_SOURCES = utils_vl_lookup_test.c testing.h
 test_utils_vl_lookup_LDADD = liblookup.la daemon/libplugin_mock.la
+if BUILD_WITH_LIBKSTAT
+test_utils_vl_lookup_LDADD += -lkstat
+endif
 
 TESTS = test_utils_mount test_utils_vl_lookup
 

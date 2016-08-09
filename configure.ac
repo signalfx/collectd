@@ -611,7 +611,35 @@ AC_CHECK_HEADERS(linux/un.h, [], [],
 #endif
 ])
 
-AC_CHECK_HEADERS(pwd.h grp.h sys/un.h ctype.h limits.h xfs/xqm.h fs_info.h fshelp.h paths.h mntent.h mnttab.h sys/fstyp.h sys/fs_types.h sys/mntent.h sys/mnttab.h sys/statfs.h sys/statvfs.h sys/vfs.h sys/vfstab.h sys/vmmeter.h kvm.h wordexp.h locale.h)
+AC_CHECK_HEADERS([ \
+  ctype.h \
+  fs_info.h \
+  fshelp.h \
+  grp.h \
+  kvm.h \
+  limits.h \
+  locale.h \
+  mntent.h \
+  mnttab.h \
+  paths.h \
+  pwd.h \
+  sys/fs_types.h \
+  sys/fstyp.h \
+  sys/mntent.h \
+  sys/mnttab.h \
+  sys/statfs.h \
+  sys/statvfs.h \
+  sys/un.h \
+  sys/vfs.h \
+  sys/vfstab.h \
+  sys/vmmeter.h \
+  wordexp.h \
+])
+
+AC_CHECK_HEADERS([xfs/xqm.h], [], [],
+[
+#define _GNU_SOURCE
+])
 
 # For the dns plugin
 AC_CHECK_HEADERS(arpa/nameser.h)
@@ -3955,76 +3983,102 @@ AM_CONDITIONAL(BUILD_WITH_LIBROUTEROS, test "x$with_librouteros" = "xyes")
 # }}}
 
 # --with-librrd {{{
-# AC_ARG_WITH (package, help-string, [action-if-given], [action-if-not-given])
 librrd_cflags=""
 librrd_ldflags=""
-librrd_threadsafe="yes"
+librrd_threadsafe="no"
 librrd_rrdc_update="no"
-AC_ARG_WITH(librrd, [AS_HELP_STRING([--with-librrd@<:@=PREFIX@:>@], [Path to rrdtool.])],
-[	if test "x$withval" != "xno" && test "x$withval" != "xyes"
-	then
-		librrd_cflags="-I$withval/include"
-		librrd_ldflags="-L$withval/lib"
-		with_librrd="yes"
-	else
-		with_librrd="$withval"
-	fi
-], [with_librrd="yes"])
+AC_ARG_WITH(librrd,
+  [AS_HELP_STRING([--with-librrd@<:@=PREFIX@:>@], [Path to rrdtool.])],
+  [
+    if test "x$withval" != "xno" && test "x$withval" != "xyes"
+    then
+      librrd_cflags="-I$withval/include"
+      librrd_ldflags="-L$withval/lib"
+      with_librrd="yes"
+    else
+      with_librrd="$withval"
+    fi
+  ],
+  [with_librrd="yes"]
+)
+
 if test "x$with_librrd" = "xyes"
 then
-	SAVE_CPPFLAGS="$CPPFLAGS"
-	SAVE_LDFLAGS="$LDFLAGS"
+  SAVE_LDFLAGS="$LDFLAGS"
+  LDFLAGS="$LDFLAGS $librrd_ldflags"
+  PKG_CHECK_MODULES([RRD], [librrd >= 1.6.0],
+    [
+      AC_CHECK_LIB([rrd], [rrd_update_r],
+        [librrd_threadsafe="yes"],
+        [:]
+      )
+      AC_CHECK_LIB([rrd], [rrdc_update],
+        [librrd_rrdc_update="yes"],
+        [:]
+      )
+    ],[:]
+  )
+  LDFLAGS="$SAVE_LDFLAGS"
 
-	CPPFLAGS="$CPPFLAGS $librrd_cflags"
-	LDFLAGS="$LDFLAGS $librrd_ldflags"
+  SAVE_CPPFLAGS="$CPPFLAGS"
+  CPPFLAGS="$CPPFLAGS $RRD_CFLAGS $librrd_cflags"
 
-	AC_CHECK_HEADERS(rrd.h,, [with_librrd="no (rrd.h not found)"])
+  AC_CHECK_HEADERS([rrd.h],, [with_librrd="no (rrd.h not found)"])
 
-	CPPFLAGS="$SAVE_CPPFLAGS"
-	LDFLAGS="$SAVE_LDFLAGS"
+  CPPFLAGS="$SAVE_CPPFLAGS"
 fi
-if test "x$with_librrd" = "xyes"
+
+if test "x$with_librrd" = "xyes" && test "x$librrd_threadsafe" = "xno"
 then
-	SAVE_CPPFLAGS="$CPPFLAGS"
-	SAVE_LDFLAGS="$LDFLAGS"
+  SAVE_LDFLAGS="$LDFLAGS"
+  LDFLAGS="$LDFLAGS $librrd_ldflags"
 
-	CPPFLAGS="$CPPFLAGS $librrd_cflags"
-	LDFLAGS="$LDFLAGS $librrd_ldflags"
-
-	AC_CHECK_LIB(rrd_th, rrd_update_r,
-	[with_librrd="yes"
-	 librrd_ldflags="$librrd_ldflags -lrrd_th -lm"
-	],
-	[librrd_threadsafe="no"
-	 AC_CHECK_LIB(rrd, rrd_update,
-	 [with_librrd="yes"
-	  librrd_ldflags="$librrd_ldflags -lrrd -lm"
-	 ],
-	 [with_librrd="no (symbol 'rrd_update' not found)"],
-	 [-lm])
-	],
-	[-lm])
-
-	if test "x$librrd_threadsafe" = "xyes"
-	then
-		AC_CHECK_LIB(rrd_th, rrdc_update, [librrd_rrdc_update="yes"], [librrd_rrdc_update="no"])
-	else
-		AC_CHECK_LIB(rrd, rrdc_update, [librrd_rrdc_update="yes"], [librrd_rrdc_update="no"])
-	fi
-
-	CPPFLAGS="$SAVE_CPPFLAGS"
-	LDFLAGS="$SAVE_LDFLAGS"
+  AC_CHECK_LIB([rrd_th], [rrd_update_r],
+    [
+      librrd_ldflags="$librrd_ldflags -lrrd_th"
+      librrd_threadsafe="yes"
+      AC_CHECK_LIB([rrd_th], [rrdc_update],
+        [librrd_rrdc_update="yes"],
+        [:],
+      )
+    ],
+    [:]
+  )
+  LDFLAGS="$SAVE_LDFLAGS"
 fi
+
+if test "x$with_librrd" = "xyes" && test "x$librrd_threadsafe" = "xno"
+then
+  SAVE_LDFLAGS="$LDFLAGS"
+  LDFLAGS="$LDFLAGS $librrd_ldflags"
+
+  AC_CHECK_LIB([rrd], [rrd_update],
+    [
+      librrd_ldflags="$librrd_ldflags -lrrd"
+      AC_CHECK_LIB([rrd], [rrdc_update],
+        [librrd_rrdc_update="yes"],
+        [:]
+      )
+    ],
+    [with_librrd="no (symbol 'rrd_update' not found)"]
+  )
+  LDFLAGS="$SAVE_LDFLAGS"
+fi
+
 if test "x$with_librrd" = "xyes"
 then
-	BUILD_WITH_LIBRRD_CFLAGS="$librrd_cflags"
-	BUILD_WITH_LIBRRD_LDFLAGS="$librrd_ldflags"
-	AC_SUBST(BUILD_WITH_LIBRRD_CFLAGS)
-	AC_SUBST(BUILD_WITH_LIBRRD_LDFLAGS)
+  BUILD_WITH_LIBRRD_CFLAGS="$RRD_CFLAGS $librrd_cflags"
+  BUILD_WITH_LIBRRD_LDFLAGS="$librrd_ldflags"
+  BUILD_WITH_LIBRRD_LIBS="$RRD_LIBS"
+  AC_SUBST(BUILD_WITH_LIBRRD_CFLAGS)
+  AC_SUBST(BUILD_WITH_LIBRRD_LDFLAGS)
+  AC_SUBST(BUILD_WITH_LIBRRD_LIBS)
 fi
 if test "x$librrd_threadsafe" = "xyes"
 then
-	AC_DEFINE(HAVE_THREADSAFE_LIBRRD, 1, [Define to 1 if you have the threadsafe rrd library (-lrrd_th).])
+  AC_DEFINE([HAVE_THREADSAFE_LIBRRD], [1],
+    [Define to 1 if the rrd library is thread-safe]
+  )
 fi
 # }}}
 
@@ -4441,8 +4495,10 @@ if test "x$with_libudev" = "xyes"
 then
 	BUILD_WITH_LIBUDEV_CFLAGS="$with_libudev_cflags"
 	BUILD_WITH_LIBUDEV_LDFLAGS="$with_libudev_ldflags"
+	BUILD_WITH_LIBUDEV_LIBS="-ludev"
 	AC_SUBST(BUILD_WITH_LIBUDEV_CFLAGS)
 	AC_SUBST(BUILD_WITH_LIBUDEV_LDFLAGS)
+	AC_SUBST(BUILD_WITH_LIBUDEV_LIBS)
 fi
 AM_CONDITIONAL(BUILD_WITH_LIBUDEV, test "x$with_libudev" = "xyes")
 # }}}
@@ -5264,6 +5320,7 @@ plugin_perl="no"
 plugin_processes="no"
 plugin_protocols="no"
 plugin_serial="no"
+plugin_smart="no"
 plugin_swap="no"
 plugin_tape="no"
 plugin_tcpconns="no"
@@ -5561,6 +5618,11 @@ then
 	plugin_processes="yes"
 fi
 
+if test "x$with_libatasmart" = "xyes" && test "x$with_libudev" = "xyes"
+then
+	plugin_smart="yes"
+fi
+
 if test "x$with_kvm_getswapinfo" = "xyes"
 then
 	plugin_swap="yes"
@@ -5704,7 +5766,7 @@ AC_PLUGIN([rrdtool],     [$with_librrd],       [RRDTool output plugin])
 AC_PLUGIN([sensors],     [$with_libsensors],   [lm_sensors statistics])
 AC_PLUGIN([serial],      [$plugin_serial],     [serial port traffic])
 AC_PLUGIN([sigrok],      [$with_libsigrok],    [sigrok acquisition sources])
-AC_PLUGIN([smart],       [$with_libatasmart],  [SMART statistics])
+AC_PLUGIN([smart],       [$plugin_smart],      [SMART statistics])
 AC_PLUGIN([snmp],        [$with_libnetsnmp],   [SNMP querying plugin])
 AC_PLUGIN([statsd],      [yes],                [StatsD plugin])
 AC_PLUGIN([swap],        [$plugin_swap],       [Swap usage statistics])

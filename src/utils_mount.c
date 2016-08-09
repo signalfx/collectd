@@ -20,17 +20,23 @@
  *   Niki W. Waibel <niki.waibel@gmx.net>
 **/
 
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
+
+#if HAVE_XFS_XQM_H
+# define _GNU_SOURCE
+# include <xfs/xqm.h>
+#define XFS_SUPER_MAGIC_STR "XFSB"
+#define XFS_SUPER_MAGIC2_STR "BSFX"
+#endif
+
 #include "collectd.h"
 #include "utils_mount.h"
 
 #include "common.h" /* sstrncpy() et alii */
 #include "plugin.h" /* ERROR() macro */
 
-#if HAVE_XFS_XQM_H
-# include <xfs/xqm.h>
-#define XFS_SUPER_MAGIC_STR "XFSB"
-#define XFS_SUPER_MAGIC2_STR "BSFX"
-#endif
 
 #if HAVE_GETVFSSTAT
 #  if HAVE_SYS_TYPES_H
@@ -429,16 +435,16 @@ static cu_mount_t *cu_mount_listmntent (void)
 #elif HAVE_GETVFSSTAT || HAVE_GETFSSTAT
 static cu_mount_t *cu_mount_getfsstat (void)
 {
-#if HAVE_GETVFSSTAT
-#  define STRUCT_STATFS struct statvfs
-#  define CMD_STATFS    getvfsstat
-#  define FLAGS_STATFS  ST_NOWAIT
-/* #endif HAVE_GETVFSSTAT */
-#elif HAVE_GETFSSTAT
+#if HAVE_GETFSSTAT
 #  define STRUCT_STATFS struct statfs
 #  define CMD_STATFS    getfsstat
 #  define FLAGS_STATFS  MNT_NOWAIT
-#endif /* HAVE_GETFSSTAT */
+/* #endif HAVE_GETFSSTAT */
+#elif HAVE_GETVFSSTAT
+#  define STRUCT_STATFS struct statvfs
+#  define CMD_STATFS    getvfsstat
+#  define FLAGS_STATFS  ST_NOWAIT
+#endif /* HAVE_GETVFSSTAT */
 
 	int bufsize;
 	STRUCT_STATFS *buf;

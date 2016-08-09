@@ -128,7 +128,13 @@
 #  undef SAVE_FOB_64
 #endif
 
+# include <sys/user.h>
 # include <dirent.h>
+
+#ifndef MAXCOMLEN
+#  define MAXCOMLEN 16
+#endif
+
 /* #endif KERNEL_SOLARIS */
 
 #else
@@ -550,6 +556,12 @@ static int ps_config (oconfig_item_t *ci)
 {
 	int i;
 
+#if KERNEL_LINUX
+	const size_t max_procname_len = 15;
+#elif KERNEL_SOLARIS || KERNEL_FREEBSD
+	const size_t max_procname_len = MAXCOMLEN -1;
+#endif
+
 	for (i = 0; i < ci->children_num; ++i) {
 		oconfig_item_t *c = ci->children + i;
 
@@ -569,6 +581,15 @@ static int ps_config (oconfig_item_t *ci)
 						"content (%i elements) of the <Process '%s'> block.",
 						c->children_num, c->values[0].value.string);
 			}
+
+#if KERNEL_LINUX || KERNEL_SOLARIS || KERNEL_FREEBSD
+			if (strlen (c->values[0].value.string) > max_procname_len) {
+				WARNING ("processes plugin: this platform has a %zu character limit "
+						"to process names. The `Process \"%s\"' option will "
+						"not work as expected.",
+						max_procname_len, c->values[0].value.string);
+			}
+#endif
 
 			ps_list_register (c->values[0].value.string, NULL);
 		}
@@ -1169,7 +1190,7 @@ static char *ps_get_cmdline (long pid, char *name, char *buf, size_t buf_len)
 	return buf;
 } /* char *ps_get_cmdline (...) */
 
-static int read_fork_rate ()
+static int read_fork_rate (void)
 {
 	FILE *proc_stat;
 	char buffer[1024];
@@ -1283,6 +1304,10 @@ static int ps_read_process(long pid, procstat_t *ps, char *state)
 		ps->num_proc = 0;
 		ps->num_lwp = 0;
 		*state = (char) 'Z';
+
+		sfree(myStatus);
+		sfree(myInfo);
+		sfree(myUsage);
 		return (0);
 	} else {
 		ps->num_proc = 1;
@@ -2047,9 +2072,6 @@ static int ps_read (void)
 			pse.io_syscr = -1;
 			pse.io_syscw = -1;
 
-			pse.cswitch_vol = -1;
-			pse.cswitch_invol = -1;
-
 			ps_list_add (procs[i].p_comm, have_cmdline ? cmdline : NULL, &pse);
 
 			switch (procs[i].p_stat)
@@ -2291,9 +2313,6 @@ static int ps_read (void)
 		pse.io_wchar = ps.io_wchar;
 		pse.io_syscr = ps.io_syscr;
 		pse.io_syscw = ps.io_syscw;
-
-		pse.cswitch_vol = -1;
-		pse.cswitch_invol = -1;
 
 		switch (state)
 		{

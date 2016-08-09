@@ -62,11 +62,12 @@
 %{?el7:%global _has_lvm2app_h 1}
 %{?el7:%global _has_libudev 1}
 %{?el7:%global _has_recent_librrd 1}
-%{?el7:%global _has_broken_libmemcached 1}
 %{?el7:%global _has_iproute 1}
 %{?el7:%global _has_atasmart 1}
 %{?el7:%global _has_hiredis 1}
 %{?el7:%global _has_asm_msr_index 1}
+%{?el7:%global _has_libmodbus 1}
+%{?el7:%global _has_xmms 1}
 
 # plugins enabled by default
 %define with_aggregation 0%{!?_without_aggregation:1}
@@ -115,7 +116,7 @@
 %define with_madwifi 0%{!?_without_madwifi:1}
 %define with_mbmon 0%{!?_without_mbmon:1}
 %define with_md 0%{!?_without_md:1}
-%define with_memcachec 0%{!?_without_memcachec:0%{!?_has_broken_libmemcached:1}}
+%define with_memcachec 0%{!?_without_memcachec:1}
 %define with_memcached 0%{!?_without_memcached:1}
 %define with_memory 0%{!?_without_memory:1}
 %define with_multimeter 0%{!?_without_multimeter:1}
@@ -175,6 +176,7 @@
 %define with_write_riemann 0%{!?_without_write_riemann:1}
 %define with_write_sensu 0%{!?_without_write_sensu:1}
 %define with_write_tsdb 0%{!?_without_write_tsdb:1}
+%define with_xmms 0%{!?_without_xmms:0%{?_has_xmms}}
 %define with_zfs_arc 0%{!?_without_zfs_arc:1}
 %define with_zookeeper 0%{!?_without_zookeeper:1}
 
@@ -211,15 +213,13 @@
 %define with_write_kafka 0%{!?_without_write_kafka:0}
 # plugin write_mongodb disabled, requires libmongoc
 %define with_write_mongodb 0%{!?_without_write_mongodb:0}
-# plugin xmms disabled, requires xmms
-%define with_xmms 0%{!?_without_xmms:0}
 
 Summary:	statistics collection and monitoring daemon
 Name:		collectd
-Version:	5.5.1
+Version:	5.5.2
 Release:	1%{?dist}
-URL:		http://collectd.org
-Source:		http://collectd.org/files/%{name}-%{version}.tar.bz2
+URL:		https://collectd.org
+Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
 License:	GPLv2
 Group:		System Environment/Daemons
 BuildRoot:	%{_tmppath}/%{name}-%{version}-root
@@ -772,6 +772,16 @@ Requires:	%{name}%{?_isa} = %{version}-%{release}
 BuildRequires:	protobuf-c-devel
 %description write_riemann
 The riemann plugin submits values to Riemann, an event stream processor.
+%endif
+
+%if %{with_xmms}
+%package xmms
+Summary:	XMMS plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+BuildRequires:	xmms-devel
+%description xmms
+The xmms plugin collects information from the XMMS music player.
 %endif
 
 %package collection3
@@ -2322,6 +2332,11 @@ fi
 %{_libdir}/%{name}/write_riemann.so
 %endif
 
+%if %{with_xmms}
+%files xmms
+%{_libdir}/%{name}/xmms.so
+%endif
+
 %files collection3
 %{_localstatedir}/www/collection3
 %{_sysconfdir}/httpd/conf.d/collection3.conf
@@ -2334,6 +2349,19 @@ fi
 %doc contrib/
 
 %changelog
+* Thu Aug 11 2016 SignalFx <support+rpm@signalfx.com> 5.5.2-sfx0
+- Package for 5.5.2
+
+* Tue Jul 26 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.5.2-1
+- New upstream version
+- Contains fix for CVE-2016-6254
+- Change collectd.org url to https
+
+* Sat Jun 04 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> 5.5.1-1
+- New upstream version
+- New plugins enabled by default: chrony, mqtt, notify_nagios
+- New plugins disabled by default: grpc, zone, xencpu
+
 * Thu Feb 26 2016 SignalFx <support+rpm@signalfx.com> 5.5.1-sfx0
 - Package for 5.5.1
 
@@ -2356,11 +2384,12 @@ fi
 - Install collectdctl, collectd-tg and collectd-nagios in collectd-utils.rpm
 - Add build-dependency on libcap-devel
 
-* Mon Aug 19 2013 Marc Fournier <marc.fournier@camptocamp.com> 5.4.0-1
+* Mon Aug 19 2013 Marc Fournier <marc.fournier@camptocamp.com> 5.4.2-1
 - New upstream version
 - Build netlink plugin by default
 - Enable cgroups, lvm and statsd plugins
 - Enable (but don't build by default) mic, aquaero and sigrok plugins
+- Enable modbus, memcachec and xmms plugins on RHEL7
 
 * Tue Aug 06 2013 Marc Fournier <marc.fournier@camptocamp.com> 5.3.1-1
 - New upstream version
