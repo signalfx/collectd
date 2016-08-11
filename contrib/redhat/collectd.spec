@@ -2349,7 +2349,7 @@ fi
 %doc contrib/
 
 %changelog
-* Thu Aug 11 2016 SignalFx <support+rpm@signalfx.com> 5.5.2-sfx0
+* Thu Aug 18 2016 SignalFx <support+rpm@signalfx.com> 5.5.2-sfx0
 - Package for 5.5.2
 
 * Tue Jul 26 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.5.2-1
