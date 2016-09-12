@@ -36,6 +36,7 @@
 #define _GNU_SOURCE
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
 #include "utils_time.h"
@@ -457,7 +458,7 @@ delta_core(struct core_data *delta, const struct core_data *new, const struct co
  */
 static inline int __attribute__((warn_unused_result))
 delta_thread(struct thread_data *delta, const struct thread_data *new, const struct thread_data *old,
-	const struct core_data *core_delta)
+	const struct core_data *cdelta)
 {
 	delta->tsc = new->tsc - old->tsc;
 
@@ -491,12 +492,12 @@ delta_thread(struct thread_data *delta, const struct thread_data *new, const str
 	 * it is possible for mperf's non-halted cycles + idle states
 	 * to exceed TSC's all cycles: show c1 = 0% in that case.
 	 */
-	if ((delta->mperf + core_delta->c3 + core_delta->c6 + core_delta->c7) > delta->tsc)
+	if ((delta->mperf + cdelta->c3 + cdelta->c6 + cdelta->c7) > delta->tsc)
 		delta->c1 = 0;
 	else {
 		/* normal case, derive c1 */
-		delta->c1 = delta->tsc - delta->mperf - core_delta->c3
-			- core_delta->c6 - core_delta->c7;
+		delta->c1 = delta->tsc - delta->mperf - cdelta->c3
+			- cdelta->c6 - cdelta->c7;
 	}
 
 	if (delta->mperf == 0) {
@@ -651,11 +652,10 @@ for_all_cpus(int (func)(struct thread_data *, struct core_data *, struct pkg_dat
 	struct thread_data *thread_base, struct core_data *core_base, struct pkg_data *pkg_base)
 {
 	int retval;
-	unsigned int pkg_no, core_no, thread_no;
 
-	for (pkg_no = 0; pkg_no < topology.num_packages; ++pkg_no) {
-		for (core_no = 0; core_no < topology.num_cores; ++core_no) {
-			for (thread_no = 0; thread_no < topology.num_threads; ++thread_no) {
+	for (unsigned int pkg_no = 0; pkg_no < topology.num_packages; ++pkg_no) {
+		for (unsigned int core_no = 0; core_no < topology.num_cores; ++core_no) {
+			for (unsigned int thread_no = 0; thread_no < topology.num_threads; ++thread_no) {
 				struct thread_data *t;
 				struct core_data *c;
 				struct pkg_data *p;
@@ -691,11 +691,10 @@ for_all_cpus_delta(const struct thread_data *thread_new_base, const struct core_
 		   const struct thread_data *thread_old_base, const struct core_data *core_old_base, const struct pkg_data *pkg_old_base)
 {
 	int retval;
-	unsigned int pkg_no, core_no, thread_no;
 
-	for (pkg_no = 0; pkg_no < topology.num_packages; ++pkg_no) {
-		for (core_no = 0; core_no < topology.num_cores; ++core_no) {
-			for (thread_no = 0; thread_no < topology.num_threads; ++thread_no) {
+	for (unsigned int pkg_no = 0; pkg_no < topology.num_packages; ++pkg_no) {
+		for (unsigned int core_no = 0; core_no < topology.num_cores; ++core_no) {
+			for (unsigned int thread_no = 0; thread_no < topology.num_threads; ++thread_no) {
 				struct thread_data *t_delta;
 				const struct thread_data *t_old, *t_new;
 				struct core_data *c_delta;
@@ -805,7 +804,7 @@ guess:
  * Identify the functionality of the CPU
  */
 static int __attribute__((warn_unused_result))
-probe_cpu()
+probe_cpu(void)
 {
 	unsigned int eax, ebx, ecx, edx, max_level;
 	unsigned int fms, family, model;
@@ -1037,6 +1036,7 @@ parse_int_file(const char *fmt, ...)
 	}
 	if (fscanf(filep, "%d", &value) != 1) {
 		ERROR("turbostat plugin: Failed to parse number from '%s'", path);
+		fclose(filep);
 		return -1;
 	}
 	fclose(filep);
@@ -1146,9 +1146,8 @@ allocate_cpu_set(cpu_set_t ** set, size_t * size) {
  * Build a local representation of the cpu distribution
  */
 static int __attribute__((warn_unused_result))
-topology_probe()
+topology_probe(void)
 {
-	unsigned int i;
 	int ret;
 	unsigned int max_package_id, max_core_id, max_threads;
 	max_package_id = max_core_id = max_threads = 0;
@@ -1185,7 +1184,7 @@ topology_probe()
 	 * For online cpus
 	 * find max_core_id, max_package_id
 	 */
-	for (i = 0; i <= topology.max_cpu_id; ++i) {
+	for (unsigned int i = 0; i <= topology.max_cpu_id; ++i) {
 		unsigned int num_threads;
 		struct cpu_topology *cpu = &topology.cpus[i];
 
@@ -1250,7 +1249,6 @@ err:
 static int
 allocate_counters(struct thread_data **threads, struct core_data **cores, struct pkg_data **packages)
 {
-	unsigned int i;
 	unsigned int total_threads, total_cores;
 
 	if ((topology.num_threads == 0)
@@ -1270,7 +1268,7 @@ allocate_counters(struct thread_data **threads, struct core_data **cores, struct
 		return -1;
 	}
 
-	for (i = 0; i < total_threads; ++i)
+	for (unsigned int i = 0; i < total_threads; ++i)
 		(*threads)[i].cpu_id = topology.max_cpu_id + 1;
 
 	total_cores = topology.num_cores * topology.num_packages;
@@ -1320,9 +1318,7 @@ init_counter(struct thread_data *thread_base, struct core_data *core_base,
 static void
 initialize_counters(void)
 {
-	unsigned int cpu_id;
-
-	for (cpu_id = 0; cpu_id <= topology.max_cpu_id; ++cpu_id) {
+	for (unsigned int cpu_id = 0; cpu_id <= topology.max_cpu_id; ++cpu_id) {
 		if (cpu_is_not_present(cpu_id))
 			continue;
 		init_counter(EVEN_COUNTERS, cpu_id);
@@ -1341,7 +1337,7 @@ free_all_buffers(void)
 
 	CPU_FREE(cpu_present_set);
 	cpu_present_set = NULL;
-	cpu_present_set = 0;
+	cpu_present_setsize = 0;
 
 	CPU_FREE(cpu_affinity_set);
 	cpu_affinity_set = NULL;
@@ -1478,35 +1474,22 @@ out:
 static int
 check_permissions(void)
 {
-#ifdef HAVE_SYS_CAPABILITY_H
-	struct __user_cap_header_struct cap_header_data;
-	cap_user_header_t cap_header = &cap_header_data;
-	struct __user_cap_data_struct cap_data_data;
-	cap_user_data_t cap_data = &cap_data_data;
-	int ret = 0;
-#endif /* HAVE_SYS_CAPABILITY_H */
 
 	if (getuid() == 0) {
 		/* We have everything we need */
 		return 0;
-#ifndef HAVE_SYS_CAPABILITY_H
+#if !defined(HAVE_SYS_CAPABILITY_H) && !defined(CAP_SYS_RAWIO)
 	} else {
 		ERROR("turbostat plugin: Initialization failed: this plugin "
 		      "requires collectd to run as root");
 		return -1;
 	}
-#else /* HAVE_SYS_CAPABILITY_H */
+#else /* HAVE_SYS_CAPABILITY_H && CAP_SYS_RAWIO */
 	}
 
-	/* check for CAP_SYS_RAWIO */
-	cap_header->pid = getpid();
-	cap_header->version = _LINUX_CAPABILITY_VERSION;
-	if (capget(cap_header, cap_data) < 0) {
-		ERROR("turbostat plugin: capget failed");
-		return -1;
-	}
+	int ret = 0;
 
-	if ((cap_data->effective & (1 << CAP_SYS_RAWIO)) == 0) {
+	if (check_capability(CAP_SYS_RAWIO) != 0) {
 		WARNING("turbostat plugin: Collectd doesn't have the "
 			"CAP_SYS_RAWIO capability. If you don't want to run "
 			"collectd as root, try running \"setcap "
@@ -1515,7 +1498,7 @@ check_permissions(void)
 	}
 
 	if (euidaccess("/dev/cpu/0/msr", R_OK)) {
-		WARNING("turbostat plugin: Collectd cannot open"
+		WARNING("turbostat plugin: Collectd cannot open "
 			"/dev/cpu/0/msr. If you don't want to run collectd as "
 			"root, you need to change the ownership (chown) and "
 			"permissions on /dev/cpu/*/msr to allow such access");
@@ -1528,7 +1511,7 @@ check_permissions(void)
 		      "collectd a special capability (CAP_SYS_RAWIO) and read "
                       "access to /dev/cpu/*/msr (see previous warnings)");
 	return ret;
-#endif /* HAVE_SYS_CAPABILITY_H */
+#endif /* HAVE_SYS_CAPABILITY_H && CAP_SYS_RAWIO */
 }
 
 static int
@@ -1538,8 +1521,8 @@ turbostat_init(void)
 	int ret;
 
 	if (stat("/dev/cpu/0/msr", &sb)) {
-		ERROR("turbostat plugin: Initialization failed: /dev/cpu/0/msr"
-		      " does not exist while the CPU supports MSR. You may be "
+		ERROR("turbostat plugin: Initialization failed: /dev/cpu/0/msr "
+		      "does not exist while the CPU supports MSR. You may be "
 		      "missing the corresponding kernel module, please try '# "
 		      "modprobe msr'");
 		return -1;

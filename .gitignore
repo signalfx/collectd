@@ -20,7 +20,6 @@ Makefile
 config.log
 config.status
 libtool
-src/.deps
 src/collectd.conf
 src/config.h
 src/libcollectdclient/libcollectdclient.pc
@@ -31,7 +30,7 @@ src/stamp-h1
 *.lo
 *.o
 .libs/
-src/collectd
+.deps/
 src/collectd-nagios
 src/collectd-tg
 src/collectdctl
@@ -53,6 +52,9 @@ src/liboconfig/scanner.c
 
 # protobuf stuff:
 src/*.pb-c.[ch]
+src/*.grpc.pb.cc
+src/*.pb.cc
+src/*.pb.h
 
 # make dist stuff:
 /collectd-*.tar.gz
@@ -73,28 +75,23 @@ bindings/java/org/collectd/java/*.class
 # python stuff
 *.pyc
 
-# tag stuff
-src/tags
-
 # backup stuff
 *~
-# tests stuff
-src/tests/.deps/
-src/tests/mock/.deps/
-src/tests/.dirstamp
-src/tests/mock/.dirstamp
-src/test_utils_latency
-src/test_utils_mount
-src/test_utils_vl_lookup
-test*.log
-*.trs
 
-# new daemon repo
-src/daemon/.deps/
-src/daemon/.dirstamp
+# lint stuff
+*.ln
+
+#ide stuff
+.vscode
+
+# cscope stuff
+cscope.*
+
+# Unit tests
+src/daemon/test-suite.log
+src/tests/
+src/test-suite.log
+test_*
+
+# src/daemon/...
 src/daemon/collectd
-src/daemon/test_common
-src/daemon/test_meta_data
-src/daemon/test_utils_avltree
-src/daemon/test_utils_heap
-src/daemon/test_utils_subst

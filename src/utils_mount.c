@@ -12,26 +12,33 @@
  * ranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public Licence for more details.
  *
- * You should have received a copy of the GNU General Public
- * Licence along with this program; if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139,
- * USA.
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  *
  * Author:
  *   Niki W. Waibel <niki.waibel@gmx.net>
 **/
 
-#include "collectd.h"
-#include "utils_mount.h"
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
-#include "common.h" /* sstrncpy() et alii */
-#include "plugin.h" /* ERROR() macro */
+#define _GNU_SOURCE
+
+#include "collectd.h"
+
+#include "utils_mount.h"
 
 #if HAVE_XFS_XQM_H
 # include <xfs/xqm.h>
 #define XFS_SUPER_MAGIC_STR "XFSB"
 #define XFS_SUPER_MAGIC2_STR "BSFX"
 #endif
+
+#include "common.h" /* sstrncpy() et alii */
+#include "plugin.h" /* ERROR() macro */
+
 
 #if HAVE_GETVFSSTAT
 #  if HAVE_SYS_TYPES_H
@@ -210,7 +217,6 @@ uuidcache_init(void)
 	FILE *procpt;
 	char uuid[16], *label = NULL;
 	char device[110];
-	int firstPass;
 	int handleOnFirst;
 
 	if(uuidCache) {
@@ -222,7 +228,7 @@ uuidcache_init(void)
 		return;
 	}
 
-	for(firstPass = 1; firstPass >= 0; firstPass--) {
+	for(int firstPass = 1; firstPass >= 0; firstPass--) {
 		fseek(procpt, 0, SEEK_SET);
 		while(fgets(line, sizeof(line), procpt)) {
 			if(sscanf(line, " %d %d %d %[^\n ]",
@@ -312,14 +318,13 @@ static char *
 get_spec_by_uuid(const char *s)
 {
 	char uuid[16];
-	int i;
 
 	if(strlen(s) != 36
 	|| s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-') {
 		goto bad_uuid;
 	}
 
-	for(i=0; i<16; i++) {
+	for(int i=0; i<16; i++) {
 		if(*s == '-') {
 			s++;
 		}
@@ -376,7 +381,6 @@ static char *get_device_name(const char *optstr)
 static cu_mount_t *cu_mount_listmntent (void)
 {
 	cu_mount_t *last = *list;
-	struct tabmntent *p;
 	struct mntent *mnt;
 
 	struct tabmntent *mntlist;
@@ -388,7 +392,7 @@ static cu_mount_t *cu_mount_listmntent (void)
 #endif /* COLLECT_DEBUG */
 	}
 
-	for(p = mntlist; p; p = p->next) {
+	for(struct tabmntent *p = mntlist; p; p = p->next) {
 		char *loop = NULL, *device = NULL;
 
 		mnt = p->ment;
@@ -430,22 +434,21 @@ static cu_mount_t *cu_mount_listmntent (void)
 #elif HAVE_GETVFSSTAT || HAVE_GETFSSTAT
 static cu_mount_t *cu_mount_getfsstat (void)
 {
-#if HAVE_GETVFSSTAT
-#  define STRUCT_STATFS struct statvfs
-#  define CMD_STATFS    getvfsstat
-#  define FLAGS_STATFS  ST_NOWAIT
-/* #endif HAVE_GETVFSSTAT */
-#elif HAVE_GETFSSTAT
+#if HAVE_GETFSSTAT
 #  define STRUCT_STATFS struct statfs
 #  define CMD_STATFS    getfsstat
 #  define FLAGS_STATFS  MNT_NOWAIT
-#endif /* HAVE_GETFSSTAT */
+/* #endif HAVE_GETFSSTAT */
+#elif HAVE_GETVFSSTAT
+#  define STRUCT_STATFS struct statvfs
+#  define CMD_STATFS    getvfsstat
+#  define FLAGS_STATFS  ST_NOWAIT
+#endif /* HAVE_GETVFSSTAT */
 
 	int bufsize;
 	STRUCT_STATFS *buf;
 
 	int num;
-	int i;
 
 	cu_mount_t *first = NULL;
 	cu_mount_t *last  = NULL;
@@ -462,10 +465,8 @@ static cu_mount_t *cu_mount_getfsstat (void)
 		return (NULL);
 	}
 
-	if ((buf = (STRUCT_STATFS *) malloc (bufsize * sizeof (STRUCT_STATFS)))
-			== NULL)
+	if ((buf = calloc (bufsize, sizeof (*buf))) == NULL)
 		return (NULL);
-	memset (buf, '\0', bufsize * sizeof (STRUCT_STATFS));
 
 	/* The bufsize needs to be passed in bytes. Really. This is not in the
 	 * manpage.. -octo */
@@ -480,12 +481,11 @@ static cu_mount_t *cu_mount_getfsstat (void)
 		return (NULL);
 	}
 
-	for (i = 0; i < num; i++)
+	for (int i = 0; i < num; i++)
 	{
-		if ((new = malloc (sizeof (cu_mount_t))) == NULL)
+		if ((new = calloc (1, sizeof (*new))) == NULL)
 			break;
-		memset (new, '\0', sizeof (cu_mount_t));
-		
+
 		/* Copy values from `struct mnttab' */
 		new->dir         = sstrdup (buf[i].f_mntonname);
 		new->spec_device = sstrdup (buf[i].f_mntfromname);
@@ -536,10 +536,9 @@ static cu_mount_t *cu_mount_gen_getmntent (void)
 
 	while (getmntent (fp, &mt) == 0)
 	{
-		if ((new = malloc (sizeof (cu_mount_t))) == NULL)
+		if ((new = calloc (1, sizeof (*new))) == NULL)
 			break;
-		memset (new, '\0', sizeof (cu_mount_t));
-		
+
 		/* Copy values from `struct mnttab' */
 		new->dir         = sstrdup (mt.mnt_mountp);
 		new->spec_device = sstrdup (mt.mnt_special);
@@ -571,6 +570,63 @@ static cu_mount_t *cu_mount_gen_getmntent (void)
 #warn "This version of `getmntent' hat not yet been implemented!"
 /* #endif HAVE_SEQ_GETMNTENT */
 
+#elif HAVE_GETMNTENT_R
+static cu_mount_t *cu_mount_getmntent (void)
+{
+	FILE *fp;
+	struct mntent me;
+	char mntbuf[1024];
+
+	cu_mount_t *first = NULL;
+	cu_mount_t *last  = NULL;
+	cu_mount_t *new   = NULL;
+
+	DEBUG ("utils_mount: (void); COLLECTD_MNTTAB = %s", COLLECTD_MNTTAB);
+
+	if ((fp = setmntent (COLLECTD_MNTTAB, "r")) == NULL)
+	{
+		char errbuf[1024];
+		ERROR ("setmntent (%s): %s", COLLECTD_MNTTAB,
+				sstrerror (errno, errbuf, sizeof (errbuf)));
+		return (NULL);
+	}
+
+	while (getmntent_r (fp, &me, mntbuf, sizeof (mntbuf) ))
+	{
+		if ((new = calloc (1, sizeof (*new))) == NULL)
+			break;
+
+		/* Copy values from `struct mntent *' */
+		new->dir         = sstrdup (me.mnt_dir);
+		new->spec_device = sstrdup (me.mnt_fsname);
+		new->type        = sstrdup (me.mnt_type);
+		new->options     = sstrdup (me.mnt_opts);
+		new->device      = get_device_name (new->options);
+		new->next        = NULL;
+
+		DEBUG ("utils_mount: new = {dir = %s, spec_device = %s, type = %s, options = %s, device = %s}",
+				new->dir, new->spec_device, new->type, new->options, new->device);
+
+		/* Append to list */
+		if (first == NULL)
+		{
+			first = new;
+			last  = new;
+		}
+		else
+		{
+			last->next = new;
+			last       = new;
+		}
+	}
+
+	endmntent (fp);
+
+	DEBUG ("utils_mount: return (0x%p)", (void *) first);
+
+	return (first);
+} /* HAVE_GETMNTENT_R */
+
 #elif HAVE_ONE_GETMNTENT
 static cu_mount_t *cu_mount_getmntent (void)
 {
@@ -593,10 +649,9 @@ static cu_mount_t *cu_mount_getmntent (void)
 
 	while ((me = getmntent (fp)) != NULL)
 	{
-		if ((new = malloc (sizeof (cu_mount_t))) == NULL)
+		if ((new = calloc (1, sizeof (*new))) == NULL)
 			break;
-		memset (new, '\0', sizeof (cu_mount_t));
-		
+
 		/* Copy values from `struct mntent *' */
 		new->dir         = sstrdup (me->mnt_dir);
 		new->spec_device = sstrdup (me->mnt_fsname);
@@ -683,10 +738,9 @@ cu_mount_t *cu_mount_getlist(cu_mount_t **list)
 
 void cu_mount_freelist (cu_mount_t *list)
 {
-	cu_mount_t *this;
 	cu_mount_t *next;
 
-	for (this = list; this != NULL; this = next)
+	for (cu_mount_t *this = list; this != NULL; this = next)
 	{
 		next = this->next;
 
@@ -700,15 +754,15 @@ void cu_mount_freelist (cu_mount_t *list)
 } /* void cu_mount_freelist(cu_mount_t *list) */
 
 char *
-cu_mount_checkoption(char *line, char *keyword, int full)
+cu_mount_checkoption(char *line, const char *keyword, int full)
 {
-	char *line2, *l2;
-	int l = strlen(keyword);
-	char *p1, *p2;
+	char *line2, *l2, *p1, *p2;
+	int l;
 
 	if(line == NULL || keyword == NULL) {
 		return NULL;
 	}
+
 	if(full != 0) {
 		full = 1;
 	}
@@ -722,6 +776,7 @@ cu_mount_checkoption(char *line, char *keyword, int full)
 		l2++;
 	}
 
+	l = strlen(keyword);
 	p1 = line - 1;
 	p2 = strchr(line, ',');
 	do {
@@ -740,7 +795,7 @@ cu_mount_checkoption(char *line, char *keyword, int full)
 } /* char *cu_mount_checkoption(char *line, char *keyword, int full) */
 
 char *
-cu_mount_getoptionvalue(char *line, char *keyword)
+cu_mount_getoptionvalue(char *line, const char *keyword)
 {
 	char *r;
 
@@ -756,13 +811,13 @@ cu_mount_getoptionvalue(char *line, char *keyword)
 			if((p-r) == 1) {
 				return NULL;
 			}
-			m = (char *)smalloc(p-r+1);
+			m = smalloc(p-r+1);
 			sstrncpy(m, r, p-r+1);
 			return m;
 		}
 	}
 	return r;
-} /* char *cu_mount_getoptionvalue(char *line, char *keyword) */
+} /* char *cu_mount_getoptionvalue(char *line, const char *keyword) */
 
 int
 cu_mount_type(const char *type)

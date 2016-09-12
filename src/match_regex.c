@@ -32,6 +32,7 @@
  */
 
 #include "collectd.h"
+
 #include "filter_chain.h"
 
 #include <sys/types.h>
@@ -99,12 +100,10 @@ static void mr_free_match (mr_match_t *m) /* {{{ */
 static int mr_match_regexen (mr_regex_t *re_head, /* {{{ */
 		const char *string)
 {
-	mr_regex_t *re;
-
 	if (re_head == NULL)
 		return (FC_MATCH_MATCHES);
 
-	for (re = re_head; re != NULL; re = re->next)
+	for (mr_regex_t *re = re_head; re != NULL; re = re->next)
 	{
 		int status;
 
@@ -140,13 +139,12 @@ static int mr_config_add_regex (mr_regex_t **re_head, /* {{{ */
 		return (-1);
 	}
 
-	re = (mr_regex_t *) malloc (sizeof (*re));
+	re = calloc (1, sizeof (*re));
 	if (re == NULL)
 	{
-		log_err ("mr_config_add_regex: malloc failed.");
+		log_err ("mr_config_add_regex: calloc failed.");
 		return (-1);
 	}
-	memset (re, 0, sizeof (*re));
 	re->next = NULL;
 
 	re->re_str = strdup (ci->values[0].value.string);
@@ -163,7 +161,7 @@ static int mr_config_add_regex (mr_regex_t **re_head, /* {{{ */
 		char errmsg[1024];
 		regerror (status, &re->re, errmsg, sizeof (errmsg));
 		errmsg[sizeof (errmsg) - 1] = 0;
-		log_err ("Compiling regex `%s' for `%s' failed: %s.", 
+		log_err ("Compiling regex `%s' for `%s' failed: %s.",
 				re->re_str, ci->key, errmsg);
 		free (re->re_str);
 		free (re);
@@ -192,20 +190,18 @@ static int mr_create (const oconfig_item_t *ci, void **user_data) /* {{{ */
 {
 	mr_match_t *m;
 	int status;
-	int i;
 
-	m = (mr_match_t *) malloc (sizeof (*m));
+	m = calloc (1, sizeof (*m));
 	if (m == NULL)
 	{
-		log_err ("mr_create: malloc failed.");
+		log_err ("mr_create: calloc failed.");
 		return (-ENOMEM);
 	}
-	memset (m, 0, sizeof (*m));
-	
+
 	m->invert = 0;
 
 	status = 0;
-	for (i = 0; i < ci->children_num; i++)
+	for (int i = 0; i < ci->children_num; i++)
 	{
 		oconfig_item_t *child = ci->children + i;
 
@@ -305,9 +301,8 @@ static int mr_match (const data_set_t __attribute__((unused)) *ds, /* {{{ */
 
 void module_register (void)
 {
-	match_proc_t mproc;
+	match_proc_t mproc = { 0 };
 
-	memset (&mproc, 0, sizeof (mproc));
 	mproc.create  = mr_create;
 	mproc.destroy = mr_destroy;
 	mproc.match   = mr_match;

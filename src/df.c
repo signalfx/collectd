@@ -22,9 +22,9 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
-#include "configfile.h"
 #include "utils_mount.h"
 #include "utils_ignorelist.h"
 
@@ -53,7 +53,6 @@ static const char *config_keys[] =
 	"FSType",
 	"IgnoreSelected",
 	"ReportByDevice",
-	"ReportReserved",
 	"ReportInodes",
 	"ValuesAbsolute",
 	"ValuesPercentage"
@@ -191,7 +190,6 @@ static int df_read (void)
 #endif
 	/* struct STATANYFS statbuf; */
 	cu_mount_t *mnt_list;
-	cu_mount_t *mnt_ptr;
 
 	mnt_list = NULL;
 	if (cu_mount_getlist (&mnt_list) == NULL)
@@ -200,10 +198,11 @@ static int df_read (void)
 		return (-1);
 	}
 
-	for (mnt_ptr = mnt_list; mnt_ptr != NULL; mnt_ptr = mnt_ptr->next)
+	for (cu_mount_t *mnt_ptr = mnt_list; mnt_ptr != NULL; mnt_ptr = mnt_ptr->next)
 	{
 		unsigned long long blocksize;
 		char disk_name[256];
+		cu_mount_t *dup_ptr;
 		uint64_t blk_free;
 		uint64_t blk_reserved;
 		uint64_t blk_used;
@@ -217,6 +216,30 @@ static int df_read (void)
 		if (ignorelist_match (il_mountpoint, mnt_ptr->dir))
 			continue;
 		if (ignorelist_match (il_fstype, mnt_ptr->type))
+			continue;
+
+		/* search for duplicates *in front of* the current mnt_ptr. */
+		for (dup_ptr = mnt_list; dup_ptr != NULL; dup_ptr = dup_ptr->next)
+		{
+			/* No duplicate found: mnt_ptr is the first of its kind. */
+			if (dup_ptr == mnt_ptr)
+			{
+				dup_ptr = NULL;
+				break;
+			}
+
+			/* Duplicate found: leave non-NULL dup_ptr. */
+			if (by_device
+                            && (mnt_ptr->spec_device != NULL)
+                            && (dup_ptr->spec_device != NULL)
+                            && (strcmp (mnt_ptr->spec_device, dup_ptr->spec_device) == 0))
+				break;
+			else if (!by_device && (strcmp (mnt_ptr->dir, dup_ptr->dir) == 0))
+				break;
+		}
+
+		/* ignore duplicates */
+		if (dup_ptr != NULL)
 			continue;
 
 		if (STATANYFS (mnt_ptr->dir, &statbuf) < 0)
@@ -249,19 +272,15 @@ static int df_read (void)
 		else
 		{
 			if (strcmp (mnt_ptr->dir, "/") == 0)
-			{
-				if (strcmp (mnt_ptr->type, "rootfs") == 0)
-					continue;
 				sstrncpy (disk_name, "root", sizeof (disk_name));
-			}
 			else
 			{
-				int i, len;
+				int len;
 
 				sstrncpy (disk_name, mnt_ptr->dir + 1, sizeof (disk_name));
 				len = strlen (disk_name);
 
-				for (i = 0; i < len; i++)
+				for (int i = 0; i < len; i++)
 					if (disk_name[i] == '/')
 						disk_name[i] = '-';
 			}

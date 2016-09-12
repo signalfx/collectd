@@ -25,6 +25,7 @@
  **/
 
 #include "collectd.h"
+
 #include "plugin.h"
 #include "utils_latency.h"
 #include "common.h"
@@ -76,7 +77,7 @@ struct latency_counter_s
 * So, if the required bin width is 300, then new bin width will be 512 as it is
 * the next nearest power of 2.
 */
-void change_bin_width (latency_counter_t *lc, cdtime_t latency) /* {{{ */
+static void change_bin_width (latency_counter_t *lc, cdtime_t latency) /* {{{ */
 {
   /* This function is called because the new value is above histogram's range.
    * First find the required bin width:
@@ -96,9 +97,8 @@ void change_bin_width (latency_counter_t *lc, cdtime_t latency) /* {{{ */
   if (lc->num > 0) // if the histogram has data then iterate else skip
   {
       double width_change_ratio = ((double) old_bin_width) / ((double) new_bin_width);
-      size_t i;
 
-      for (i = 0; i < HISTOGRAM_NUM_BINS; i++)
+      for (size_t i = 0; i < HISTOGRAM_NUM_BINS; i++)
       {
          size_t new_bin = (size_t) (((double) i) * width_change_ratio);
          if (i == new_bin)
@@ -117,17 +117,16 @@ void change_bin_width (latency_counter_t *lc, cdtime_t latency) /* {{{ */
       CDTIME_T_TO_DOUBLE (new_bin_width));
 } /* }}} void change_bin_width */
 
-latency_counter_t *latency_counter_create () /* {{{ */
+latency_counter_t *latency_counter_create (void) /* {{{ */
 {
   latency_counter_t *lc;
 
-  lc = malloc (sizeof (*lc));
+  lc = calloc (1, sizeof (*lc));
   if (lc == NULL)
     return (NULL);
-  memset (lc, 0, sizeof (*lc));
 
-  latency_counter_reset (lc);
   lc->bin_width = HISTOGRAM_DEFAULT_BIN_WIDTH;
+  latency_counter_reset (lc);
   return (lc);
 } /* }}} latency_counter_t *latency_counter_create */
 
@@ -176,6 +175,28 @@ void latency_counter_reset (latency_counter_t *lc) /* {{{ */
     return;
 
   cdtime_t bin_width = lc->bin_width;
+  cdtime_t max_bin = (lc->max - 1) / lc->bin_width;
+
+/*
+  If max latency is REDUCE_THRESHOLD times less than histogram's range,
+  then cut it in half. REDUCE_THRESHOLD must be >= 2.
+  Value of 4 is selected to reduce frequent changes of bin width.
+*/
+#define REDUCE_THRESHOLD 4
+  if ((lc->num > 0) && (lc->bin_width >= HISTOGRAM_DEFAULT_BIN_WIDTH * 2)
+     && (max_bin < HISTOGRAM_NUM_BINS / REDUCE_THRESHOLD))
+  {
+    /* new bin width will be the previous power of 2 */
+    bin_width = bin_width / 2;
+
+    DEBUG("utils_latency: latency_counter_reset: max_latency = %.3f; "
+          "max_bin = %"PRIu64"; old_bin_width = %.3f; new_bin_width = %.3f;",
+        CDTIME_T_TO_DOUBLE (lc->max),
+        max_bin,
+        CDTIME_T_TO_DOUBLE (lc->bin_width),
+        CDTIME_T_TO_DOUBLE (bin_width));
+  }
+
   memset (lc, 0, sizeof (*lc));
 
   /* preserve bin width */

@@ -25,9 +25,9 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
-#include "configfile.h"
 
 #include "utils_cmd_flush.h"
 #include "utils_cmd_getval.h"
@@ -35,9 +35,6 @@
 #include "utils_cmd_listval.h"
 #include "utils_cmd_putval.h"
 #include "utils_cmd_putnotif.h"
-
-/* Folks without pthread will need to disable this plugin. */
-#include <pthread.h>
 
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -79,7 +76,7 @@ static pthread_t listen_thread = (pthread_t) 0;
  */
 static int us_open_socket (void)
 {
-	struct sockaddr_un sa;
+	struct sockaddr_un sa = { 0 };
 	int status;
 
 	sock_fd = socket (PF_UNIX, SOCK_STREAM, 0);
@@ -91,7 +88,6 @@ static int us_open_socket (void)
 		return (-1);
 	}
 
-	memset (&sa, '\0', sizeof (sa));
 	sa.sun_family = AF_UNIX;
 	sstrncpy (sa.sun_path, (sock_file != NULL) ? sock_file : US_DEFAULT_PATH,
 			sizeof (sa.sun_path));
@@ -127,7 +123,16 @@ static int us_open_socket (void)
 		return (-1);
 	}
 
-	chmod (sa.sun_path, sock_perms);
+	status = chmod (sa.sun_path, sock_perms);
+	if (status == -1)
+	{
+		char errbuf[1024];
+		ERROR ("unixsock plugin: chmod failed: %s",
+				sstrerror (errno, errbuf, sizeof (errbuf)));
+		close (sock_fd);
+		sock_fd = -1;
+		return (-1);
+	}
 
 	status = listen (sock_fd, 8);
 	if (status != 0)
@@ -142,7 +147,7 @@ static int us_open_socket (void)
 
 	do
 	{
-		char *grpname;
+		const char *grpname;
 		struct group *g;
 		struct group sg;
 		char grbuf[2048];
@@ -359,7 +364,7 @@ static void *us_server_thread (void __attribute__((unused)) *arg)
 			pthread_exit ((void *) 1);
 		}
 
-		remote_fd = (int *) malloc (sizeof (int));
+		remote_fd = malloc (sizeof (*remote_fd));
 		if (remote_fd == NULL)
 		{
 			char errbuf[1024];

@@ -24,68 +24,71 @@
  *   Fabrice A. Marie <fabrice at kibinlabs.com>
  */
 
+#define _GNU_SOURCE
+
 #include "collectd.h"
+
 #include "plugin.h"
 #include "common.h"
-#include "configfile.h"
 #include "utils_cache.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
 #include <inttypes.h>
-#include <pthread.h>
 #include <stddef.h>
 
 #include <stdlib.h>
-#ifndef HAVE_ASPRINTF
+#define SENSU_HOST		"localhost"
+#define SENSU_PORT		"3030"
+
+#ifdef HAVE_ASPRINTF
+#define my_asprintf asprintf
+#define my_vasprintf vasprintf
+#else
 /*
- * Uses asprintf() portable implementation from
+ * asprintf() is available from Solaris 10 update 11.
+ * For older versions, use asprintf() portable implementation from
  * https://github.com/littlstar/asprintf.c/blob/master/
  * copyright (c) 2014 joseph werle <joseph.werle@gmail.com> under MIT license.
  */
-#include <stdio.h>
-#include <stdarg.h>
 
-int vasprintf(char **str, const char *fmt, va_list args) {
-	int size = 0;
-	va_list tmpa;
-	// copy
-	va_copy(tmpa, args);
-	// apply variadic arguments to
-	// sprintf with format to get size
-	size = vsnprintf(NULL, size, fmt, tmpa);
-	// toss args
-	va_end(tmpa);
-	// return -1 to be compliant if
-	// size is less than 0
-	if (size < 0) { return -1; }
-	// alloc with size plus 1 for `\0'
-	*str = (char *) malloc(size + 1);
-	// return -1 to be compliant
-	// if pointer is `NULL'
-	if (NULL == *str) { return -1; }
-	// format string with original
-	// variadic arguments and set new size
-	size = vsprintf(*str, fmt, args);
-	return size;
+static int my_vasprintf(char **str, const char *fmt, va_list args) {
+       int size = 0;
+       va_list tmpa;
+       // copy
+       va_copy(tmpa, args);
+       // apply variadic arguments to
+       // sprintf with format to get size
+       size = vsnprintf(NULL, size, fmt, tmpa);
+       // toss args
+       va_end(tmpa);
+       // return -1 to be compliant if
+       // size is less than 0
+       if (size < 0) { return -1; }
+       // alloc with size plus 1 for `\0'
+       *str = (char *) malloc(size + 1);
+       // return -1 to be compliant
+       // if pointer is `NULL'
+       if (NULL == *str) { return -1; }
+       // format string with original
+       // variadic arguments and set new size
+       size = vsprintf(*str, fmt, args);
+       return size;
 }
 
-int asprintf(char **str, const char *fmt, ...) {
-	int size = 0;
-	va_list args;
-	// init variadic argumens
-	va_start(args, fmt);
-	// format and get size
-	size = vasprintf(str, fmt, args);
-	// toss args
-	va_end(args);
-	return size;
+static int my_asprintf(char **str, const char *fmt, ...) {
+       int size = 0;
+       va_list args;
+       // init variadic argumens
+       va_start(args, fmt);
+       // format and get size
+       size = my_vasprintf(str, fmt, args);
+       // toss args
+       va_end(args);
+       return size;
 }
 
 #endif
-
-#define SENSU_HOST		"localhost"
-#define SENSU_PORT		"3030"
 
 struct str_list {
 	int nb_strs;
@@ -140,8 +143,7 @@ static int add_str_to_list(struct str_list *strs,
 
 static void free_str_list(struct str_list *strs) /* {{{ */
 {
-	int i;
-	for (i=0; i<strs->nb_strs; i++)
+	for (int i=0; i<strs->nb_strs; i++)
 		free(strs->strs[i]);
 	free(strs->strs);
 }
@@ -150,25 +152,24 @@ static void free_str_list(struct str_list *strs) /* {{{ */
 static int sensu_connect(struct sensu_host *host) /* {{{ */
 {
 	int			 e;
-	struct addrinfo		*ai, hints;
 	char const		*node;
 	char const		*service;
 
 	// Resolve the target if we haven't done already
 	if (!(host->flags & F_READY)) {
-		memset(&hints, 0, sizeof(hints));
 		memset(&service, 0, sizeof(service));
 		host->res = NULL;
-		hints.ai_family = AF_INET;
-		hints.ai_socktype = SOCK_STREAM;
-#ifdef AI_ADDRCONFIG
-		hints.ai_flags |= AI_ADDRCONFIG;
-#endif
 
 		node = (host->node != NULL) ? host->node : SENSU_HOST;
 		service = (host->service != NULL) ? host->service : SENSU_PORT;
 
-		if ((e = getaddrinfo(node, service, &hints, &(host->res))) != 0) {
+		struct addrinfo ai_hints = {
+			.ai_family = AF_INET,
+			.ai_flags = AI_ADDRCONFIG,
+			.ai_socktype = SOCK_STREAM
+		};
+
+		if ((e = getaddrinfo(node, service, &ai_hints, &(host->res))) != 0) {
 			ERROR("write_sensu plugin: Unable to resolve host \"%s\": %s",
 					node, gai_strerror(e));
 			return -1;
@@ -180,7 +181,7 @@ static int sensu_connect(struct sensu_host *host) /* {{{ */
 
 	struct linger so_linger;
 	host->s = -1;
-	for (ai = host->res; ai != NULL; ai = ai->ai_next) {
+	for (struct addrinfo *ai = host->res; ai != NULL; ai = ai->ai_next) {
 		// create the socket
 		if ((host->s = socket(ai->ai_family,
 				      ai->ai_socktype,
@@ -193,6 +194,8 @@ static int sensu_connect(struct sensu_host *host) /* {{{ */
 		so_linger.l_linger = 3;
 		if (setsockopt(host->s, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger) != 0)
 			WARNING("write_sensu plugin: failed to set socket close() lingering");
+
+		set_sock_opts(host->s);
 
 		// connect the socket
 		if (connect(host->s, ai->ai_addr, ai->ai_addrlen) != 0) {
@@ -222,9 +225,8 @@ static void sensu_close_socket(struct sensu_host *host) /* {{{ */
 static char *build_json_str_list(const char *tag, struct str_list const *list) /* {{{ */
 {
 	int res;
-	char *ret_str;
+	char *ret_str = NULL;
 	char *temp_str;
-	int i;
 	if (list->nb_strs == 0) {
 		ret_str = malloc(sizeof(char));
 		if (ret_str == NULL) {
@@ -234,13 +236,14 @@ static char *build_json_str_list(const char *tag, struct str_list const *list) /
 		ret_str[0] = '\0';
 	}
 
-	res = asprintf(&temp_str, "\"%s\": [\"%s\"", tag, list->strs[0]);
+	res = my_asprintf(&temp_str, "\"%s\": [\"%s\"", tag, list->strs[0]);
 	if (res == -1) {
 		ERROR("write_sensu plugin: Unable to alloc memory");
+		free(ret_str);
 		return NULL;
 	}
-	for (i=1; i<list->nb_strs; i++) {
-		res = asprintf(&ret_str, "%s, \"%s\"", temp_str, list->strs[i]);
+	for (int i=1; i<list->nb_strs; i++) {
+		res = my_asprintf(&ret_str, "%s, \"%s\"", temp_str, list->strs[i]);
 		free(temp_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -248,7 +251,7 @@ static char *build_json_str_list(const char *tag, struct str_list const *list) /
 		}
 		temp_str = ret_str;
 	}
-	res = asprintf(&ret_str, "%s]", temp_str);
+	res = my_asprintf(&ret_str, "%s]", temp_str);
 	free(temp_str);
 	if (res == -1) {
 		ERROR("write_sensu plugin: Unable to alloc memory");
@@ -258,7 +261,7 @@ static char *build_json_str_list(const char *tag, struct str_list const *list) /
 	return ret_str;
 } /* }}} char *build_json_str_list*/
 
-int sensu_format_name2(char *ret, int ret_len,
+static int sensu_format_name2(char *ret, int ret_len,
 		const char *hostname,
 		const char *plugin, const char *plugin_instance,
 		const char *type, const char *type_instance,
@@ -305,9 +308,8 @@ int sensu_format_name2(char *ret, int ret_len,
 
 static void in_place_replace_sensu_name_reserved(char *orig_name) /* {{{ */
 {
-	int i;
 	int len=strlen(orig_name);
-	for (i=0; i<len; i++) {
+	for (int i=0; i<len; i++) {
 		// some plugins like ipmi generate special characters in metric name
 		switch(orig_name[i]) {
 			case '(': orig_name[i] = '_'; break;
@@ -328,7 +330,6 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 {
 	char name_buffer[5 * DATA_MAX_NAME_LEN];
 	char service_buffer[6 * DATA_MAX_NAME_LEN];
-	size_t i;
 	char *ret_str;
 	char *temp_str;
 	char *value_str;
@@ -352,7 +353,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 		}
 	}
 	else {
-		res = asprintf(&ret_str, "%s, %s", part1, handlers_str);
+		res = my_asprintf(&ret_str, "%s, %s", part1, handlers_str);
 		free(handlers_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -361,7 +362,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 	}
 
 	// incorporate the plugin name information
-	res = asprintf(&temp_str, "%s, \"collectd_plugin\": \"%s\"", ret_str, vl->plugin);
+	res = my_asprintf(&temp_str, "%s, \"collectd_plugin\": \"%s\"", ret_str, vl->plugin);
 	free(ret_str);
 	if (res == -1) {
 		ERROR("write_sensu plugin: Unable to alloc memory");
@@ -370,7 +371,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 	ret_str = temp_str;
 
 	// incorporate the plugin type
-	res = asprintf(&temp_str, "%s, \"collectd_plugin_type\": \"%s\"", ret_str, vl->type);
+	res = my_asprintf(&temp_str, "%s, \"collectd_plugin_type\": \"%s\"", ret_str, vl->type);
 	free(ret_str);
 	if (res == -1) {
 		ERROR("write_sensu plugin: Unable to alloc memory");
@@ -380,7 +381,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 
 	// incorporate the plugin instance if any
 	if (vl->plugin_instance[0] != 0) {
-		res = asprintf(&temp_str, "%s, \"collectd_plugin_instance\": \"%s\"", ret_str, vl->plugin_instance);
+		res = my_asprintf(&temp_str, "%s, \"collectd_plugin_instance\": \"%s\"", ret_str, vl->plugin_instance);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -391,7 +392,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 
 	// incorporate the plugin type instance if any
 	if (vl->type_instance[0] != 0) {
-		res = asprintf(&temp_str, "%s, \"collectd_plugin_type_instance\": \"%s\"", ret_str, vl->type_instance);
+		res = my_asprintf(&temp_str, "%s, \"collectd_plugin_type_instance\": \"%s\"", ret_str, vl->type_instance);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -404,7 +405,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 	if ((ds->ds[index].type != DS_TYPE_GAUGE) && (rates != NULL)) {
 		char ds_type[DATA_MAX_NAME_LEN];
 		ssnprintf (ds_type, sizeof (ds_type), "%s:rate", DS_TYPE_TO_STRING(ds->ds[index].type));
-		res = asprintf(&temp_str, "%s, \"collectd_data_source_type\": \"%s\"", ret_str, ds_type);
+		res = my_asprintf(&temp_str, "%s, \"collectd_data_source_type\": \"%s\"", ret_str, ds_type);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -412,7 +413,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 		}
 		ret_str = temp_str;
 	} else {
-		res = asprintf(&temp_str, "%s, \"collectd_data_source_type\": \"%s\"", ret_str, DS_TYPE_TO_STRING(ds->ds[index].type));
+		res = my_asprintf(&temp_str, "%s, \"collectd_data_source_type\": \"%s\"", ret_str, DS_TYPE_TO_STRING(ds->ds[index].type));
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -422,7 +423,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 	}
 
 	// incorporate the data source name
-	res = asprintf(&temp_str, "%s, \"collectd_data_source_name\": \"%s\"", ret_str, ds->ds[index].name);
+	res = my_asprintf(&temp_str, "%s, \"collectd_data_source_name\": \"%s\"", ret_str, ds->ds[index].name);
 	free(ret_str);
 	if (res == -1) {
 		ERROR("write_sensu plugin: Unable to alloc memory");
@@ -434,7 +435,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 	{
 		char ds_index[DATA_MAX_NAME_LEN];
 		ssnprintf (ds_index, sizeof (ds_index), "%zu", index);
-		res = asprintf(&temp_str, "%s, \"collectd_data_source_index\": %s", ret_str, ds_index);
+		res = my_asprintf(&temp_str, "%s, \"collectd_data_source_index\": %s", ret_str, ds_index);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -444,8 +445,8 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 	}
 
 	// add key value attributes from config if any
-	for (i = 0; i < sensu_attrs_num; i += 2) {
-		res = asprintf(&temp_str, "%s, \"%s\": \"%s\"", ret_str, sensu_attrs[i], sensu_attrs[i+1]);
+	for (size_t i = 0; i < sensu_attrs_num; i += 2) {
+		res = my_asprintf(&temp_str, "%s, \"%s\": \"%s\"", ret_str, sensu_attrs[i], sensu_attrs[i+1]);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -455,8 +456,8 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 	}
 
 	// incorporate sensu tags from config if any
-	if (strlen(sensu_tags) != 0) {
-		res = asprintf(&temp_str, "%s, %s", ret_str, sensu_tags);
+	if ((sensu_tags != NULL) && (strlen(sensu_tags) != 0)) {
+		res = my_asprintf(&temp_str, "%s, %s", ret_str, sensu_tags);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -467,14 +468,14 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 
 	// calculate the value and set to a string
 	if (ds->ds[index].type == DS_TYPE_GAUGE) {
-		res = asprintf(&value_str, GAUGE_FORMAT, vl->values[index].gauge);
+		res = my_asprintf(&value_str, GAUGE_FORMAT, vl->values[index].gauge);
 		if (res == -1) {
 			free(ret_str);
 			ERROR("write_sensu plugin: Unable to alloc memory");
 			return NULL;
 		}
 	} else if (rates != NULL) {
-		res = asprintf(&value_str, GAUGE_FORMAT, rates[index]);
+		res = my_asprintf(&value_str, GAUGE_FORMAT, rates[index]);
 		if (res == -1) {
 			free(ret_str);
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -482,7 +483,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 		}
 	} else {
 		if (ds->ds[index].type == DS_TYPE_DERIVE) {
-			res = asprintf(&value_str, "%"PRIi64, vl->values[index].derive);
+			res = my_asprintf(&value_str, "%"PRIi64, vl->values[index].derive);
 			if (res == -1) {
 				free(ret_str);
 				ERROR("write_sensu plugin: Unable to alloc memory");
@@ -490,7 +491,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 			}
 		}
 		else if (ds->ds[index].type == DS_TYPE_ABSOLUTE) {
-			res = asprintf(&value_str, "%"PRIu64, vl->values[index].absolute);
+			res = my_asprintf(&value_str, "%"PRIu64, vl->values[index].absolute);
 			if (res == -1) {
 				free(ret_str);
 				ERROR("write_sensu plugin: Unable to alloc memory");
@@ -498,7 +499,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 			}
 		}
 		else {
-			res = asprintf(&value_str, "%llu", vl->values[index].counter);
+			res = my_asprintf(&value_str, "%llu", vl->values[index].counter);
 			if (res == -1) {
 				free(ret_str);
 				ERROR("write_sensu plugin: Unable to alloc memory");
@@ -530,7 +531,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
 	in_place_replace_sensu_name_reserved(service_buffer);
 
 	// finalize the buffer by setting the output and closing curly bracket
-	res = asprintf(&temp_str, "%s, \"output\": \"%s %s %ld\"}\n", ret_str, service_buffer, value_str, CDTIME_T_TO_TIME_T(vl->time));
+	res = my_asprintf(&temp_str, "%s, \"output\": \"%s %s %lld\"}\n",ret_str, service_buffer, value_str, (long long)CDTIME_T_TO_TIME_T(vl->time));
 	free(ret_str);
 	free(value_str);
 	if (res == -1) {
@@ -550,7 +551,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
  * http://creativeandcritical.net/str-replace-c/
  * copyright (c) Laird Shaw, under public domain.
  */
-char *replace_str(const char *str, const char *old, /* {{{ */
+static char *replace_str(const char *str, const char *old, /* {{{ */
 		const char *new)
 {
 	char *ret, *r;
@@ -569,11 +570,10 @@ char *replace_str(const char *str, const char *old, /* {{{ */
 	} else
 		retlen = strlen(str);
 
-	ret = malloc(retlen + 1);
+	ret = calloc(1, retlen + 1);
 	if (ret == NULL)
 		return NULL;
 	// added to original: not optimized, but keeps valgrind happy.
-	memset(ret, 0, retlen + 1);
 
 	r = ret;
 	p = str;
@@ -636,7 +636,6 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 {
 	char service_buffer[6 * DATA_MAX_NAME_LEN];
 	char const *severity;
-	notification_meta_t *meta;
 	char *ret_str;
 	char *temp_str;
 	int status;
@@ -660,7 +659,7 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 			severity = "UNKNOWN";
 			status = 3;
 	}
-	res = asprintf(&temp_str, "{\"status\": %d", status);
+	res = my_asprintf(&temp_str, "{\"status\": %d", status);
 	if (res == -1) {
 		ERROR("write_sensu plugin: Unable to alloc memory");
 		return NULL;
@@ -668,7 +667,7 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 	ret_str = temp_str;
 
 	// incorporate the timestamp
-	res = asprintf(&temp_str, "%s, \"timestamp\": %ld", ret_str, CDTIME_T_TO_TIME_T(n->time));
+	res = my_asprintf(&temp_str, "%s, \"timestamp\": %lld", ret_str, (long long)CDTIME_T_TO_TIME_T(n->time));
 	free(ret_str);
 	if (res == -1) {
 		ERROR("write_sensu plugin: Unable to alloc memory");
@@ -679,11 +678,12 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 	char *handlers_str = build_json_str_list("handlers", &(host->notification_handlers));
 	if (handlers_str == NULL) {
 		ERROR("write_sensu plugin: Unable to alloc memory");
+		free(ret_str);
 		return NULL;
 	}
 	// incorporate the handlers
 	if (strlen(handlers_str) != 0) {
-		res = asprintf(&temp_str, "%s, %s", ret_str, handlers_str);
+		res = my_asprintf(&temp_str, "%s, %s", ret_str, handlers_str);
 		free(ret_str);
 		free(handlers_str);
 		if (res == -1) {
@@ -697,7 +697,7 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 
 	// incorporate the plugin name information if any
 	if (n->plugin[0] != 0) {
-		res = asprintf(&temp_str, "%s, \"collectd_plugin\": \"%s\"", ret_str, n->plugin);
+		res = my_asprintf(&temp_str, "%s, \"collectd_plugin\": \"%s\"", ret_str, n->plugin);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -708,7 +708,7 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 
 	// incorporate the plugin type if any
 	if (n->type[0] != 0) {
-		res = asprintf(&temp_str, "%s, \"collectd_plugin_type\": \"%s\"", ret_str, n->type);
+		res = my_asprintf(&temp_str, "%s, \"collectd_plugin_type\": \"%s\"", ret_str, n->type);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -719,7 +719,7 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 
 	// incorporate the plugin instance if any
 	if (n->plugin_instance[0] != 0) {
-		res = asprintf(&temp_str, "%s, \"collectd_plugin_instance\": \"%s\"", ret_str, n->plugin_instance);
+		res = my_asprintf(&temp_str, "%s, \"collectd_plugin_instance\": \"%s\"", ret_str, n->plugin_instance);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -730,7 +730,7 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 
 	// incorporate the plugin type instance if any
 	if (n->type_instance[0] != 0) {
-		res = asprintf(&temp_str, "%s, \"collectd_plugin_type_instance\": \"%s\"", ret_str, n->type_instance);
+		res = my_asprintf(&temp_str, "%s, \"collectd_plugin_type_instance\": \"%s\"", ret_str, n->type_instance);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -741,7 +741,7 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 
 	// add key value attributes from config if any
 	for (i = 0; i < sensu_attrs_num; i += 2) {
-		res = asprintf(&temp_str, "%s, \"%s\": \"%s\"", ret_str, sensu_attrs[i], sensu_attrs[i+1]);
+		res = my_asprintf(&temp_str, "%s, \"%s\": \"%s\"", ret_str, sensu_attrs[i], sensu_attrs[i+1]);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -751,8 +751,8 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 	}
 
 	// incorporate sensu tags from config if any
-	if (strlen(sensu_tags) != 0) {
-		res = asprintf(&temp_str, "%s, %s", ret_str, sensu_tags);
+	if ((sensu_tags != NULL) && (strlen(sensu_tags) != 0)) {
+		res = my_asprintf(&temp_str, "%s, %s", ret_str, sensu_tags);
 		free(ret_str);
 		if (res == -1) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
@@ -767,7 +767,7 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 				n->type, n->type_instance, host->separator);
 	// replace sensu event name chars that are considered illegal
 	in_place_replace_sensu_name_reserved(service_buffer);
-	res = asprintf(&temp_str, "%s, \"name\": \"%s\"", ret_str, &service_buffer[1]);
+	res = my_asprintf(&temp_str, "%s, \"name\": \"%s\"", ret_str, &service_buffer[1]);
 	free(ret_str);
 	if (res == -1) {
 		ERROR("write_sensu plugin: Unable to alloc memory");
@@ -780,9 +780,10 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 		char *msg = replace_json_reserved(n->message);
 		if (msg == NULL) {
 			ERROR("write_sensu plugin: Unable to alloc memory");
+			free(ret_str);
 			return NULL;
 		}
-		res = asprintf(&temp_str, "%s, \"output\": \"%s - %s\"", ret_str, severity, msg);
+		res = my_asprintf(&temp_str, "%s, \"output\": \"%s - %s\"", ret_str, severity, msg);
 		free(ret_str);
 		free(msg);
 		if (res == -1) {
@@ -793,9 +794,9 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 	}
 
 	// Pull in values from threshold and add extra attributes
-	for (meta = n->meta; meta != NULL; meta = meta->next) {
+	for (notification_meta_t *meta = n->meta; meta != NULL; meta = meta->next) {
 		if (strcasecmp("CurrentValue", meta->name) == 0 && meta->type == NM_TYPE_DOUBLE) {
-			res = asprintf(&temp_str, "%s, \"current_value\": \"%.8f\"", ret_str, meta->nm_value.nm_double);
+			res = my_asprintf(&temp_str, "%s, \"current_value\": \"%.8f\"", ret_str, meta->nm_value.nm_double);
 			free(ret_str);
 			if (res == -1) {
 				ERROR("write_sensu plugin: Unable to alloc memory");
@@ -804,7 +805,7 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 			ret_str = temp_str;
 		}
 		if (meta->type == NM_TYPE_STRING) {
-			res = asprintf(&temp_str, "%s, \"%s\": \"%s\"", ret_str, meta->name, meta->nm_value.nm_string);
+			res = my_asprintf(&temp_str, "%s, \"%s\": \"%s\"", ret_str, meta->name, meta->nm_value.nm_string);
 			free(ret_str);
 			if (res == -1) {
 				ERROR("write_sensu plugin: Unable to alloc memory");
@@ -815,7 +816,7 @@ static char *sensu_notification_to_json(struct sensu_host *host, /* {{{ */
 	}
 
 	// close the curly bracket
-	res = asprintf(&temp_str, "%s}\n", ret_str);
+	res = my_asprintf(&temp_str, "%s}\n", ret_str);
 	free(ret_str);
 	if (res == -1) {
 		ERROR("write_sensu plugin: Unable to alloc memory");
@@ -882,7 +883,6 @@ static int sensu_write(const data_set_t *ds, /* {{{ */
 	int statuses[vl->values_len];
 	struct sensu_host	*host = ud->data;
 	gauge_t *rates = NULL;
-	size_t i;
 	char *msg;
 
 	pthread_mutex_lock(&host->lock);
@@ -896,7 +896,7 @@ static int sensu_write(const data_set_t *ds, /* {{{ */
 			return -1;
 		}
 	}
-	for (i = 0; i < vl->values_len; i++) {
+	for (size_t i = 0; i < vl->values_len; i++) {
 		msg = sensu_value_to_json(host, ds, vl, (int) i, rates, statuses[i]);
 		if (msg == NULL) {
 			sfree(rates);
@@ -976,10 +976,8 @@ static int sensu_config_node(oconfig_item_t *ci) /* {{{ */
 {
 	struct sensu_host	*host = NULL;
 	int					status = 0;
-	int					i;
 	oconfig_item_t		*child;
 	char				callback_name[DATA_MAX_NAME_LEN];
-	user_data_t			ud;
 
 	if ((host = calloc(1, sizeof(*host))) == NULL) {
 		ERROR("write_sensu plugin: calloc failed.");
@@ -1011,7 +1009,7 @@ static int sensu_config_node(oconfig_item_t *ci) /* {{{ */
 		return -1;
 	}
 
-	for (i = 0; i < ci->children_num; i++) {
+	for (int i = 0; i < ci->children_num; i++) {
 		child = &ci->children[i];
 		status = 0;
 
@@ -1109,8 +1107,11 @@ static int sensu_config_node(oconfig_item_t *ci) /* {{{ */
 	}
 
 	ssnprintf(callback_name, sizeof(callback_name), "write_sensu/%s", host->name);
-	ud.data = host;
-	ud.free_func = sensu_free;
+
+	user_data_t ud = {
+		.data = host,
+		.free_func = sensu_free
+	};
 
 	pthread_mutex_lock(&host->lock);
 
@@ -1152,7 +1153,6 @@ static int sensu_config_node(oconfig_item_t *ci) /* {{{ */
 
 static int sensu_config(oconfig_item_t *ci) /* {{{ */
 {
-	int		 i;
 	oconfig_item_t	*child;
 	int		 status;
 	struct str_list sensu_tags_arr;
@@ -1160,7 +1160,7 @@ static int sensu_config(oconfig_item_t *ci) /* {{{ */
 	sensu_tags_arr.nb_strs = 0;
 	sensu_tags_arr.strs = NULL;
 
-	for (i = 0; i < ci->children_num; i++)  {
+	for (int i = 0; i < ci->children_num; i++)  {
 		child = &ci->children[i];
 
 		if (strcasecmp("Node", child->key) == 0) {

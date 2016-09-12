@@ -22,9 +22,9 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
-#include "configfile.h"
 #include "utils_ignorelist.h"
 
 #if !KERNEL_LINUX
@@ -120,6 +120,7 @@ static int irq_read (void)
 	} else {
 		ERROR ("irq plugin: unable to get CPU count from first line "
 				"of /proc/interrupts");
+		fclose (fh);
 		return (-1);
 	}
 

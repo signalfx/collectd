@@ -13,10 +13,9 @@
  * ranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public Licence for more details.
  *
- * You should have received a copy of the GNU General Public
- * Licence along with this program; if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139,
- * USA.
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  *
  * Authors:
  *   Lubos Stanek <lubek at users.sourceforge.net>
@@ -28,7 +27,7 @@
  **/
 /**
  * Usage:
- * 
+ *
  * Define plugin's global pointer variable of type ignorelist_t:
  *   ignorelist_t *myconfig_ignore;
  * If you know the state of the global ignore (IgnoreSelected),
@@ -95,34 +94,32 @@ static int ignorelist_append_regex(ignorelist_t *il, const char *re_str)
 	ignorelist_item_t *entry;
 	int status;
 
-	re = malloc (sizeof (*re));
+	re = calloc (1, sizeof (*re));
 	if (re == NULL)
 	{
-		ERROR ("utils_ignorelist: malloc failed");
+		ERROR ("ignorelist_append_regex: calloc failed.");
 		return (ENOMEM);
 	}
-	memset (re, 0, sizeof (*re));
 
 	status = regcomp (re, re_str, REG_EXTENDED);
 	if (status != 0)
 	{
-		char errbuf[1024] = "";
-		regerror (status, re, errbuf, sizeof (errbuf));
+		char errbuf[1024];
+		(void) regerror (status, re, errbuf, sizeof (errbuf));
 		ERROR ("utils_ignorelist: regcomp failed: %s", errbuf);
-		regfree (re);
+		ERROR ("ignorelist_append_regex: Compiling regular expression \"%s\" failed: %s", re_str, errbuf);
 		sfree (re);
 		return (status);
 	}
 
-	entry = malloc (sizeof (*entry));
+	entry = calloc (1, sizeof (*entry));
 	if (entry == NULL)
 	{
-		ERROR ("utils_ignorelist: malloc failed");
+		ERROR ("ignorelist_append_regex: calloc failed.");
 		regfree (re);
 		sfree (re);
 		return (ENOMEM);
 	}
-	memset (entry, 0, sizeof (*entry));
 	entry->rmatch = re;
 
 	ignorelist_append (il, entry);
@@ -135,12 +132,11 @@ static int ignorelist_append_string(ignorelist_t *il, const char *entry)
 	ignorelist_item_t *new;
 
 	/* create new entry */
-	if ((new = malloc(sizeof(ignorelist_item_t))) == NULL )
+	if ((new = calloc(1, sizeof (*new))) == NULL )
 	{
 		ERROR ("cannot allocate new entry");
 		return (1);
 	}
-	memset (new, '\0', sizeof(ignorelist_item_t));
 	new->smatch = sstrdup(entry);
 
 	/* append new entry */
@@ -195,9 +191,9 @@ ignorelist_t *ignorelist_create (int invert)
 {
 	ignorelist_t *il;
 
-	/* smalloc exits if it failes */
-	il = (ignorelist_t *) smalloc (sizeof (ignorelist_t));
-	memset (il, '\0', sizeof (ignorelist_t));
+	il = calloc (1, sizeof (*il));
+	if (il == NULL)
+		return NULL;
 
 	/*
 	 * ->ignore == 0  =>  collect
@@ -239,7 +235,6 @@ void ignorelist_free (ignorelist_t *il)
 	}
 
 	sfree (il);
-	il = NULL;
 } /* void ignorelist_destroy (ignorelist_t *il) */
 
 /*
@@ -262,7 +257,7 @@ void ignorelist_set_invert (ignorelist_t *il, int invert)
  */
 int ignorelist_add (ignorelist_t *il, const char *entry)
 {
-	size_t entry_len;
+	size_t len;
 
 	if (il == NULL)
 	{
@@ -270,10 +265,10 @@ int ignorelist_add (ignorelist_t *il, const char *entry)
 		return (1);
 	}
 
-	entry_len = strlen (entry);
+	len = strlen (entry);
 
 	/* append nothing */
-	if (entry_len == 0)
+	if (len == 0)
 	{
 		DEBUG("not appending: empty entry");
 		return (1);
@@ -281,19 +276,21 @@ int ignorelist_add (ignorelist_t *il, const char *entry)
 
 #if HAVE_REGEX_H
 	/* regex string is enclosed in "/.../" */
-	if ((entry_len > 2) && (entry[0] == '/') && entry[entry_len - 1] == '/')
+	if ((len > 2) && (entry[0] == '/') && entry[len - 1] == '/')
 	{
-		char *entry_copy;
-		size_t entry_copy_size;
+		char *copy;
 		int status;
 
-		/* We need to copy `entry' since it's const */
-		entry_copy_size = entry_len - 1;
-		entry_copy = smalloc (entry_copy_size);
-		sstrncpy (entry_copy, entry + 1, entry_copy_size);
+		/* skip leading slash */
+		copy = strdup (entry + 1);
+		if (copy == NULL)
+			return ENOMEM;
 
-		status = ignorelist_append_regex(il, entry_copy);
-		sfree (entry_copy);
+		/* trim trailing slash */
+		copy[strlen (copy) - 1] = 0;
+
+		status = ignorelist_append_regex (il, copy);
+		sfree (copy);
 		return status;
 	}
 #endif
@@ -307,8 +304,6 @@ int ignorelist_add (ignorelist_t *il, const char *entry)
  */
 int ignorelist_match (ignorelist_t *il, const char *entry)
 {
-	ignorelist_item_t *traverse;
-
 	/* if no entries, collect all */
 	if ((il == NULL) || (il->head == NULL))
 		return (0);
@@ -317,7 +312,7 @@ int ignorelist_match (ignorelist_t *il, const char *entry)
 		return (0);
 
 	/* traverse list and check entries */
-	for (traverse = il->head; traverse != NULL; traverse = traverse->next)
+	for (ignorelist_item_t *traverse = il->head; traverse != NULL; traverse = traverse->next)
 	{
 #if HAVE_REGEX_H
 		if (traverse->rmatch != NULL)

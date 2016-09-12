@@ -29,7 +29,9 @@
  */
 
 #include "collectd.h"
+
 #include "common.h"
+#include "utils_subst.h"
 
 char *subst (char *buf, size_t buflen, const char *string, size_t off1, size_t off2,
 		const char *replacement)
@@ -101,7 +103,7 @@ char *asubst (const char *string, int off1, int off2, const char *replacement)
 
 	len = off1 + strlen (replacement) + strlen (string) - off2 + 1;
 
-	buf = (char *)malloc (len);
+	buf = malloc (len);
 	if (NULL == buf)
 		return NULL;
 

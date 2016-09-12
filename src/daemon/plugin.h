@@ -1,5 +1,5 @@
 /**
- * collectd - src/plugin.h
+ * collectd - src/daemon/plugin.h
  * Copyright (C) 2005-2014  Florian octo Forster
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -29,17 +29,18 @@
 #define PLUGIN_H
 
 #include "collectd.h"
+
 #include "configfile.h"
 #include "meta_data.h"
 #include "utils_time.h"
 
-#if HAVE_PTHREAD_H
-# include <pthread.h>
-#endif
+#include <pthread.h>
 
 #define PLUGIN_FLAGS_GLOBAL 0x0001
 
-#define DATA_MAX_NAME_LEN 64
+#ifndef DATA_MAX_NAME_LEN
+# define DATA_MAX_NAME_LEN 128
+#endif
 
 #define DS_TYPE_COUNTER  0
 #define DS_TYPE_GAUGE    1
@@ -200,7 +201,6 @@ typedef void (*plugin_log_cb) (int severity, const char *message,
 typedef int (*plugin_shutdown_cb) (void);
 typedef int (*plugin_notification_cb) (const notification_t *,
 		user_data_t *);
-
 /*
  * NAME
  *  plugin_set_dir
@@ -240,10 +240,10 @@ void plugin_set_dir (const char *dir);
  */
 int plugin_load (const char *name, uint32_t flags);
 
-void plugin_init_all (void);
+int plugin_init_all (void);
 void plugin_read_all (void);
 int plugin_read_all_once (void);
-void plugin_shutdown_all (void);
+int plugin_shutdown_all (void);
 
 /*
  * NAME
@@ -334,7 +334,7 @@ int plugin_unregister_notification (const char *name);
  *  Since some writers dynamically build their name it can be hard for
  *  the configuring person to know it. This function will fill this gap.
  */
-void plugin_log_available_writers ();
+void plugin_log_available_writers (void);
 
 /*
  * NAME
@@ -458,5 +458,11 @@ cdtime_t plugin_get_interval (void);
 
 int plugin_thread_create (pthread_t *thread, const pthread_attr_t *attr,
 		void *(*start_routine) (void *), void *arg);
+
+/*
+ * Plugins need to implement this
+ */
+
+void module_register (void);
 
 #endif /* PLUGIN_H */

@@ -25,6 +25,7 @@
  **/
 
 #include "collectd.h"
+
 #include "plugin.h"
 #include "common.h"
 
@@ -48,7 +49,7 @@ static void cxmms_submit (const char *type, gauge_t value)
 	plugin_dispatch_values (&vl);
 } /* void cxmms_submit */
 
-int cxmms_read (void)
+static int cxmms_read (void)
 {
   gint rate;
   gint freq;

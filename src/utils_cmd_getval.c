@@ -25,11 +25,13 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
 
 #include "utils_cache.h"
 #include "utils_parse_option.h"
+#include "utils_cmd_getval.h"
 
 #define print_to_socket(fh, ...) \
   do { \
@@ -59,7 +61,6 @@ int handle_getval (FILE *fh, char *buffer)
   const data_set_t *ds;
 
   int   status;
-  size_t i;
 
   if ((fh == NULL) || (buffer == NULL))
     return (-1);
@@ -144,7 +145,7 @@ int handle_getval (FILE *fh, char *buffer)
 
   print_to_socket (fh, "%zu Value%s found\n", values_num,
       (values_num == 1) ? "" : "s");
-  for (i = 0; i < values_num; i++)
+  for (size_t i = 0; i < values_num; i++)
   {
     print_to_socket (fh, "%s=", ds->ds[i].name);
     if (isnan (values[i]))

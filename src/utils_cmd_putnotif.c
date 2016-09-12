@@ -25,10 +25,12 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
 
 #include "utils_parse_option.h"
+#include "utils_cmd_putnotif.h"
 
 #define print_to_socket(fh, ...) \
   do { \
@@ -118,7 +120,7 @@ static int set_option (notification_t *n, const char *option, const char *value)
 int handle_putnotif (FILE *fh, char *buffer)
 {
   char *command;
-  notification_t n;
+  notification_t n = { 0 };
   int status;
 
   if ((fh == NULL) || (buffer == NULL))
@@ -141,8 +143,6 @@ int handle_putnotif (FILE *fh, char *buffer)
     print_to_socket (fh, "-1 Unexpected command: `%s'.\n", command);
     return (-1);
   }
-
-  memset (&n, '\0', sizeof (n));
 
   status = 0;
   while (*buffer != 0)

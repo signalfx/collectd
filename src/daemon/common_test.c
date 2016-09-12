@@ -24,8 +24,8 @@
  *   Florian octo Forster <octo at collectd.org>
  */
 
-#include "testing.h"
 #include "common.h"
+#include "testing.h"
 
 #if HAVE_LIBKSTAT
 kstat_ctl_t *kc;
@@ -90,7 +90,6 @@ DEF_TEST(sstrdup)
   EXPECT_EQ_STR ("collectd", ptr);
 
   sfree(ptr);
-  OK(ptr == NULL);
 
   ptr = sstrdup (NULL);
   OK(ptr == NULL);
@@ -204,9 +203,8 @@ DEF_TEST(escape_slashes)
     {"trailing/slash/", "trailing_slash_"},
     {"foo//bar", "foo__bar"},
   };
-  size_t i;
 
-  for (i = 0; i < STATIC_ARRAY_SIZE (cases); i++) {
+  for (size_t i = 0; i < STATIC_ARRAY_SIZE (cases); i++) {
     char buffer[32];
 
     strncpy (buffer, cases[i].str, sizeof (buffer));
@@ -231,9 +229,8 @@ DEF_TEST(escape_string)
     {"012345 78901234", "\"012345 789012\""},
     {"012345 78901\"34", "\"012345 78901\""},
   };
-  size_t i;
 
-  for (i = 0; i < STATIC_ARRAY_SIZE (cases); i++) {
+  for (size_t i = 0; i < STATIC_ARRAY_SIZE (cases); i++) {
     char buffer[16];
 
     strncpy (buffer, cases[i].str, sizeof (buffer));
@@ -302,8 +299,7 @@ DEF_TEST(parse_values)
     {"T:42.0",           -1,  NAN},
   };
 
-  size_t i;
-  for (i = 0; i < STATIC_ARRAY_SIZE (cases); i++)
+  for (size_t i = 0; i < STATIC_ARRAY_SIZE (cases); i++)
   {
     data_source_t dsrc = {
       .name = "value",
@@ -362,9 +358,8 @@ DEF_TEST(value_to_rate)
     /* 64bit wrap-around. */
     {30, 40, DS_TYPE_COUNTER, {.counter = 18446744073709551558ULL}, {.counter =   42}, 10.0},
   };
-  size_t i;
 
-  for (i = 0; i < STATIC_ARRAY_SIZE (cases); i++) {
+  for (size_t i = 0; i < STATIC_ARRAY_SIZE (cases); i++) {
     value_to_rate_state_t state = { cases[i].v0, TIME_T_TO_CDTIME_T (cases[i].t0) };
     gauge_t got;
 

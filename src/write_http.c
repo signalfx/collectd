@@ -24,14 +24,11 @@
  **/
 
 #include "collectd.h"
+
 #include "plugin.h"
 #include "common.h"
-#include "utils_cache.h"
 #include "utils_format_json.h"
-
-#if HAVE_PTHREAD_H
-# include <pthread.h>
-#endif
+#include "utils_format_kairosdb.h"
 
 #include <curl/curl.h>
 
@@ -64,11 +61,15 @@ struct wh_callback_s
         time_t low_speed_time;
         int timeout;
 
-#define WH_FORMAT_COMMAND 0
-#define WH_FORMAT_JSON    1
+#define WH_FORMAT_COMMAND  0
+#define WH_FORMAT_JSON     1
+#define WH_FORMAT_KAIROSDB 2
         int format;
+        _Bool send_metrics;
+        _Bool send_notifications;
 
         CURL *curl;
+        struct curl_slist *headers;
         char curl_errbuf[CURL_ERROR_SIZE];
 
         char  *send_buffer;
@@ -96,12 +97,15 @@ static void wh_log_http_error (wh_callback_t *cb)
 
 static void wh_reset_buffer (wh_callback_t *cb)  /* {{{ */
 {
+        if ((cb == NULL) || (cb->send_buffer == NULL))
+                return;
+
         memset (cb->send_buffer, 0, cb->send_buffer_size);
         cb->send_buffer_free = cb->send_buffer_size;
         cb->send_buffer_fill = 0;
         cb->send_buffer_init_time = cdtime ();
 
-        if (cb->format == WH_FORMAT_JSON)
+        if (cb->format == WH_FORMAT_JSON || cb->format == WH_FORMAT_KAIROSDB)
         {
                 format_json_initialize (cb->send_buffer,
                                 &cb->send_buffer_fill,
@@ -109,11 +113,12 @@ static void wh_reset_buffer (wh_callback_t *cb)  /* {{{ */
         }
 } /* }}} wh_reset_buffer */
 
-static int wh_send_buffer (wh_callback_t *cb) /* {{{ */
+/* must hold cb->send_lock when calling */
+static int wh_post_nolock (wh_callback_t *cb, char const *data) /* {{{ */
 {
         int status = 0;
 
-        curl_easy_setopt (cb->curl, CURLOPT_POSTFIELDS, cb->send_buffer);
+        curl_easy_setopt (cb->curl, CURLOPT_POSTFIELDS, data);
         status = curl_easy_perform (cb->curl);
 
         wh_log_http_error (cb);
@@ -125,12 +130,10 @@ static int wh_send_buffer (wh_callback_t *cb) /* {{{ */
                                 status, cb->curl_errbuf);
         }
         return (status);
-} /* }}} wh_send_buffer */
+} /* }}} wh_post_nolock */
 
 static int wh_callback_init (wh_callback_t *cb) /* {{{ */
 {
-        struct curl_slist *headers;
-
         if (cb->curl != NULL)
                 return (0);
 
@@ -157,14 +160,13 @@ static int wh_callback_init (wh_callback_t *cb) /* {{{ */
         curl_easy_setopt (cb->curl, CURLOPT_NOSIGNAL, 1L);
         curl_easy_setopt (cb->curl, CURLOPT_USERAGENT, COLLECTD_USERAGENT);
 
-        headers = NULL;
-        headers = curl_slist_append (headers, "Accept:  */*");
-        if (cb->format == WH_FORMAT_JSON)
-                headers = curl_slist_append (headers, "Content-Type: application/json");
+        cb->headers = curl_slist_append (cb->headers, "Accept:  */*");
+        if (cb->format == WH_FORMAT_JSON || cb->format == WH_FORMAT_KAIROSDB)
+                cb->headers = curl_slist_append (cb->headers, "Content-Type: application/json");
         else
-                headers = curl_slist_append (headers, "Content-Type: text/plain");
-        headers = curl_slist_append (headers, "Expect:");
-        curl_easy_setopt (cb->curl, CURLOPT_HTTPHEADER, headers);
+                cb->headers = curl_slist_append (cb->headers, "Content-Type: text/plain");
+        cb->headers = curl_slist_append (cb->headers, "Expect:");
+        curl_easy_setopt (cb->curl, CURLOPT_HTTPHEADER, cb->headers);
 
         curl_easy_setopt (cb->curl, CURLOPT_ERRORBUFFER, cb->curl_errbuf);
         curl_easy_setopt (cb->curl, CURLOPT_URL, cb->location);
@@ -184,7 +186,7 @@ static int wh_callback_init (wh_callback_t *cb) /* {{{ */
                 if (cb->pass != NULL)
                         credentials_size += strlen (cb->pass);
 
-                cb->credentials = (char *) malloc (credentials_size);
+                cb->credentials = malloc (credentials_size);
                 if (cb->credentials == NULL)
                 {
                         ERROR ("curl plugin: malloc failed.");
@@ -242,16 +244,16 @@ static int wh_flush_nolock (cdtime_t timeout, wh_callback_t *cb) /* {{{ */
 
         if (cb->format == WH_FORMAT_COMMAND)
         {
-                if (cb->send_buffer_fill <= 0)
+                if (cb->send_buffer_fill == 0)
                 {
                         cb->send_buffer_init_time = cdtime ();
                         return (0);
                 }
 
-                status = wh_send_buffer (cb);
+                status = wh_post_nolock (cb, cb->send_buffer);
                 wh_reset_buffer (cb);
         }
-        else if (cb->format == WH_FORMAT_JSON)
+        else if (cb->format == WH_FORMAT_JSON || cb->format == WH_FORMAT_KAIROSDB)
         {
                 if (cb->send_buffer_fill <= 2)
                 {
@@ -270,7 +272,7 @@ static int wh_flush_nolock (cdtime_t timeout, wh_callback_t *cb) /* {{{ */
                         return (status);
                 }
 
-                status = wh_send_buffer (cb);
+                status = wh_post_nolock (cb, cb->send_buffer);
                 wh_reset_buffer (cb);
         }
         else
@@ -298,15 +300,11 @@ static int wh_flush (cdtime_t timeout, /* {{{ */
 
         pthread_mutex_lock (&cb->send_lock);
 
-        if (cb->curl == NULL)
+        if (wh_callback_init (cb) != 0)
         {
-                status = wh_callback_init (cb);
-                if (status != 0)
-                {
-                        ERROR ("write_http plugin: wh_callback_init failed.");
-                        pthread_mutex_unlock (&cb->send_lock);
-                        return (-1);
-                }
+                ERROR ("write_http plugin: wh_callback_init failed.");
+                pthread_mutex_unlock (&cb->send_lock);
+                return (-1);
         }
 
         status = wh_flush_nolock (timeout, cb);
@@ -324,13 +322,21 @@ static void wh_callback_free (void *data) /* {{{ */
 
         cb = data;
 
-        wh_flush_nolock (/* timeout = */ 0, cb);
+        if (cb->send_buffer != NULL)
+                wh_flush_nolock (/* timeout = */ 0, cb);
 
         if (cb->curl != NULL)
         {
                 curl_easy_cleanup (cb->curl);
                 cb->curl = NULL;
         }
+
+        if (cb->headers != NULL)
+        {
+                curl_slist_free_all (cb->headers);
+                cb->headers = NULL;
+        }
+
         sfree (cb->name);
         sfree (cb->location);
         sfree (cb->user);
@@ -356,7 +362,11 @@ static int wh_write_command (const data_set_t *ds, const value_list_t *vl, /* {{
 
         int status;
 
-        if (0 != strcmp (ds->type, vl->type)) {
+        /* sanity checks, primarily to make static analyzers happy. */
+        if ((cb == NULL) || (cb->send_buffer == NULL))
+                return -1;
+
+        if (strcmp (ds->type, vl->type) == 0) {
                 ERROR ("write_http plugin: DS type does not match "
                                 "value list type");
                 return -1;
@@ -391,16 +401,11 @@ static int wh_write_command (const data_set_t *ds, const value_list_t *vl, /* {{
         }
 
         pthread_mutex_lock (&cb->send_lock);
-
-        if (cb->curl == NULL)
+        if (wh_callback_init (cb) != 0)
         {
-                status = wh_callback_init (cb);
-                if (status != 0)
-                {
-                        ERROR ("write_http plugin: wh_callback_init failed.");
-                        pthread_mutex_unlock (&cb->send_lock);
-                        return (-1);
-                }
+                ERROR ("write_http plugin: wh_callback_init failed.");
+                pthread_mutex_unlock (&cb->send_lock);
+                return (-1);
         }
 
         if (command_len >= cb->send_buffer_free)
@@ -413,6 +418,9 @@ static int wh_write_command (const data_set_t *ds, const value_list_t *vl, /* {{
                 }
         }
         assert (command_len < cb->send_buffer_free);
+
+        /* Make scan-build happy. */
+        assert (cb->send_buffer != NULL);
 
         /* `command_len + 1' because `command_len' does not include the
          * trailing null byte. Neither does `send_buffer_fill'. */
@@ -439,23 +447,18 @@ static int wh_write_json (const data_set_t *ds, const value_list_t *vl, /* {{{ *
         int status;
 
         pthread_mutex_lock (&cb->send_lock);
-
-        if (cb->curl == NULL)
+        if (wh_callback_init (cb) != 0)
         {
-                status = wh_callback_init (cb);
-                if (status != 0)
-                {
-                        ERROR ("write_http plugin: wh_callback_init failed.");
-                        pthread_mutex_unlock (&cb->send_lock);
-                        return (-1);
-                }
+                ERROR ("write_http plugin: wh_callback_init failed.");
+                pthread_mutex_unlock (&cb->send_lock);
+                return (-1);
         }
 
         status = format_json_value_list (cb->send_buffer,
                         &cb->send_buffer_fill,
                         &cb->send_buffer_free,
                         ds, vl, cb->store_rates);
-        if (status == (-ENOMEM))
+        if (status == -ENOMEM)
         {
                 status = wh_flush_nolock (/* timeout = */ 0, cb);
                 if (status != 0)
@@ -487,6 +490,60 @@ static int wh_write_json (const data_set_t *ds, const value_list_t *vl, /* {{{ *
         return (0);
 } /* }}} int wh_write_json */
 
+static int wh_write_kairosdb (const data_set_t *ds, const value_list_t *vl, /* {{{ */
+                wh_callback_t *cb)
+{
+        int status;
+
+        pthread_mutex_lock (&cb->send_lock);
+
+        if (cb->curl == NULL)
+        {
+                status = wh_callback_init (cb);
+                if (status != 0)
+                {
+                        ERROR ("write_http plugin: wh_callback_init failed.");
+                        pthread_mutex_unlock (&cb->send_lock);
+                        return (-1);
+                }
+        }
+
+        status = format_kairosdb_value_list (cb->send_buffer,
+                        &cb->send_buffer_fill,
+                        &cb->send_buffer_free,
+                        ds, vl, cb->store_rates);
+        if (status == -ENOMEM)
+        {
+                status = wh_flush_nolock (/* timeout = */ 0, cb);
+                if (status != 0)
+                {
+                        wh_reset_buffer (cb);
+                        pthread_mutex_unlock (&cb->send_lock);
+                        return (status);
+                }
+
+                status = format_kairosdb_value_list (cb->send_buffer,
+                                &cb->send_buffer_fill,
+                                &cb->send_buffer_free,
+                                ds, vl, cb->store_rates);
+        }
+        if (status != 0)
+        {
+                pthread_mutex_unlock (&cb->send_lock);
+                return (status);
+        }
+
+        DEBUG ("write_http plugin: <%s> buffer %zu/%zu (%g%%)",
+                        cb->location,
+                        cb->send_buffer_fill, cb->send_buffer_size,
+                        100.0 * ((double) cb->send_buffer_fill) / ((double) cb->send_buffer_size));
+
+        /* Check if we have enough space for this command. */
+        pthread_mutex_unlock (&cb->send_lock);
+
+        return (0);
+} /* }}} int wh_write_kairosdb */
+
 static int wh_write (const data_set_t *ds, const value_list_t *vl, /* {{{ */
                 user_data_t *user_data)
 {
@@ -497,14 +554,54 @@ static int wh_write (const data_set_t *ds, const value_list_t *vl, /* {{{ */
                 return (-EINVAL);
 
         cb = user_data->data;
+        assert (cb->send_metrics);
 
-        if (cb->format == WH_FORMAT_JSON)
+        switch(cb->format) {
+            case WH_FORMAT_JSON:
                 status = wh_write_json (ds, vl, cb);
-        else
+                break;
+            case WH_FORMAT_KAIROSDB:
+                status = wh_write_kairosdb (ds, vl, cb);
+                break;
+            default:
                 status = wh_write_command (ds, vl, cb);
-
+                break;
+        }
         return (status);
 } /* }}} int wh_write */
+
+static int wh_notify (notification_t const *n, user_data_t *ud) /* {{{ */
+{
+        wh_callback_t *cb;
+        char alert[4096];
+        int status;
+
+        if ((ud == NULL) || (ud->data == NULL))
+                return (EINVAL);
+
+        cb = ud->data;
+        assert (cb->send_notifications);
+
+        status = format_json_notification (alert, sizeof (alert), n);
+        if (status != 0)
+        {
+                ERROR ("write_http plugin: formatting notification failed");
+                return status;
+        }
+
+        pthread_mutex_lock (&cb->send_lock);
+        if (wh_callback_init (cb) != 0)
+        {
+                ERROR ("write_http plugin: wh_callback_init failed.");
+                pthread_mutex_unlock (&cb->send_lock);
+                return (-1);
+        }
+
+        status = wh_post_nolock (cb, alert);
+        pthread_mutex_unlock (&cb->send_lock);
+
+        return (status);
+} /* }}} int wh_notify */
 
 static int config_set_format (wh_callback_t *cb, /* {{{ */
                 oconfig_item_t *ci)
@@ -524,6 +621,8 @@ static int config_set_format (wh_callback_t *cb, /* {{{ */
                 cb->format = WH_FORMAT_COMMAND;
         else if (strcasecmp ("JSON", string) == 0)
                 cb->format = WH_FORMAT_JSON;
+        else if (strcasecmp ("KAIROSDB", string) == 0)
+                cb->format = WH_FORMAT_KAIROSDB;
         else
         {
                 ERROR ("write_http plugin: Invalid format string: %s",
@@ -534,21 +633,38 @@ static int config_set_format (wh_callback_t *cb, /* {{{ */
         return (0);
 } /* }}} int config_set_format */
 
+static int wh_config_append_string (const char *name, struct curl_slist **dest, /* {{{ */
+    oconfig_item_t *ci)
+{
+  struct curl_slist *temp = NULL;
+  if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING))
+  {
+    WARNING ("write_http plugin: `%s' needs exactly one string argument.", name);
+    return (-1);
+  }
+
+  temp = curl_slist_append(*dest, ci->values[0].value.string);
+  if (temp == NULL)
+    return (-1);
+
+  *dest = temp;
+
+  return (0);
+} /* }}} int wh_config_append_string */
+
 static int wh_config_node (oconfig_item_t *ci) /* {{{ */
 {
         wh_callback_t *cb;
         int buffer_size = 0;
-        user_data_t user_data;
         char callback_name[DATA_MAX_NAME_LEN];
-        int i;
+        int status = 0;
 
-        cb = malloc (sizeof (*cb));
+        cb = calloc (1, sizeof (*cb));
         if (cb == NULL)
         {
-                ERROR ("write_http plugin: malloc failed.");
+                ERROR ("write_http plugin: calloc failed.");
                 return (-1);
         }
-        memset (cb, 0, sizeof (*cb));
         cb->verify_peer = 1;
         cb->verify_host = 1;
         cb->format = WH_FORMAT_COMMAND;
@@ -556,6 +672,9 @@ static int wh_config_node (oconfig_item_t *ci) /* {{{ */
         cb->low_speed_limit = 0;
         cb->timeout = 0;
         cb->log_http_error = 0;
+        cb->headers = NULL;
+        cb->send_metrics = 1;
+        cb->send_notifications = 0;
 
         pthread_mutex_init (&cb->send_lock, /* attr = */ NULL);
 
@@ -565,35 +684,37 @@ static int wh_config_node (oconfig_item_t *ci) /* {{{ */
         if (strcasecmp ("URL", ci->key) == 0)
                 cf_util_get_string (ci, &cb->location);
 
-        for (i = 0; i < ci->children_num; i++)
+        for (int i = 0; i < ci->children_num; i++)
         {
                 oconfig_item_t *child = ci->children + i;
 
                 if (strcasecmp ("URL", child->key) == 0)
-                        cf_util_get_string (child, &cb->location);
+                        status = cf_util_get_string (child, &cb->location);
                 else if (strcasecmp ("User", child->key) == 0)
-                        cf_util_get_string (child, &cb->user);
+                        status = cf_util_get_string (child, &cb->user);
                 else if (strcasecmp ("Password", child->key) == 0)
-                        cf_util_get_string (child, &cb->pass);
+                        status = cf_util_get_string (child, &cb->pass);
                 else if (strcasecmp ("VerifyPeer", child->key) == 0)
-                        cf_util_get_boolean (child, &cb->verify_peer);
+                        status = cf_util_get_boolean (child, &cb->verify_peer);
                 else if (strcasecmp ("VerifyHost", child->key) == 0)
-                        cf_util_get_boolean (child, &cb->verify_host);
+                        status = cf_util_get_boolean (child, &cb->verify_host);
                 else if (strcasecmp ("CACert", child->key) == 0)
-                        cf_util_get_string (child, &cb->cacert);
+                        status = cf_util_get_string (child, &cb->cacert);
                 else if (strcasecmp ("CAPath", child->key) == 0)
-                        cf_util_get_string (child, &cb->capath);
+                        status = cf_util_get_string (child, &cb->capath);
                 else if (strcasecmp ("ClientKey", child->key) == 0)
-                        cf_util_get_string (child, &cb->clientkey);
+                        status = cf_util_get_string (child, &cb->clientkey);
                 else if (strcasecmp ("ClientCert", child->key) == 0)
-                        cf_util_get_string (child, &cb->clientcert);
+                        status = cf_util_get_string (child, &cb->clientcert);
                 else if (strcasecmp ("ClientKeyPass", child->key) == 0)
-                        cf_util_get_string (child, &cb->clientkeypass);
+                        status = cf_util_get_string (child, &cb->clientkeypass);
                 else if (strcasecmp ("SSLVersion", child->key) == 0)
                 {
                         char *value = NULL;
 
-                        cf_util_get_string (child, &value);
+                        status = cf_util_get_string (child, &value);
+                        if (status != 0)
+                                break;
 
                         if (value == NULL || strcasecmp ("default", value) == 0)
                                 cb->sslversion = CURL_SSLVERSION_DEFAULT;
@@ -612,34 +733,61 @@ static int wh_config_node (oconfig_item_t *ci) /* {{{ */
                                 cb->sslversion = CURL_SSLVERSION_TLSv1_2;
 #endif
                         else
+                        {
                                 ERROR ("write_http plugin: Invalid SSLVersion "
                                                 "option: %s.", value);
+                                status = EINVAL;
+                        }
 
                         sfree(value);
                 }
                 else if (strcasecmp ("Format", child->key) == 0)
-                        config_set_format (cb, child);
+                        status = config_set_format (cb, child);
+                else if (strcasecmp ("Metrics", child->key) == 0)
+                        cf_util_get_boolean (child, &cb->send_metrics);
+                else if (strcasecmp ("Notifications", child->key) == 0)
+                        cf_util_get_boolean (child, &cb->send_notifications);
                 else if (strcasecmp ("StoreRates", child->key) == 0)
-                        cf_util_get_boolean (child, &cb->store_rates);
+                        status = cf_util_get_boolean (child, &cb->store_rates);
                 else if (strcasecmp ("BufferSize", child->key) == 0)
-                        cf_util_get_int (child, &buffer_size);
+                        status = cf_util_get_int (child, &buffer_size);
                 else if (strcasecmp ("LowSpeedLimit", child->key) == 0)
-                        cf_util_get_int (child, &cb->low_speed_limit);
+                        status = cf_util_get_int (child, &cb->low_speed_limit);
                 else if (strcasecmp ("Timeout", child->key) == 0)
-                        cf_util_get_int (child, &cb->timeout);
+                        status = cf_util_get_int (child, &cb->timeout);
                 else if (strcasecmp ("LogHttpError", child->key) == 0)
-                        cf_util_get_boolean (child, &cb->log_http_error);
+                        status = cf_util_get_boolean (child, &cb->log_http_error);
+                else if (strcasecmp ("Header", child->key) == 0)
+                        status = wh_config_append_string ("Header", &cb->headers, child);
                 else
                 {
                         ERROR ("write_http plugin: Invalid configuration "
                                         "option: %s.", child->key);
+                        status = EINVAL;
                 }
+
+                if (status != 0)
+                        break;
+        }
+
+        if (status != 0)
+        {
+                wh_callback_free (cb);
+                return (status);
         }
 
         if (cb->location == NULL)
         {
                 ERROR ("write_http plugin: no URL defined for instance '%s'",
                         cb->name);
+                wh_callback_free (cb);
+                return (-1);
+        }
+
+        if (!cb->send_metrics && !cb->send_notifications)
+        {
+                ERROR ("write_http plugin: Neither metrics nor notifications "
+                       "are enabled for \"%s\".", cb->name);
                 wh_callback_free (cb);
                 return (-1);
         }
@@ -671,22 +819,34 @@ static int wh_config_node (oconfig_item_t *ci) /* {{{ */
         DEBUG ("write_http: Registering write callback '%s' with URL '%s'",
                         callback_name, cb->location);
 
-        memset (&user_data, 0, sizeof (user_data));
-        user_data.data = cb;
-        user_data.free_func = NULL;
+        user_data_t user_data = {
+                .data = cb
+        };
+
         plugin_register_flush (callback_name, wh_flush, &user_data);
 
         user_data.free_func = wh_callback_free;
-        plugin_register_write (callback_name, wh_write, &user_data);
+
+        if (cb->send_metrics)
+        {
+                plugin_register_write (callback_name, wh_write, &user_data);
+                user_data.free_func = NULL;
+
+                plugin_register_flush (callback_name, wh_flush, &user_data);
+        }
+
+        if (cb->send_notifications)
+        {
+                plugin_register_notification (callback_name, wh_notify, &user_data);
+                user_data.free_func = NULL;
+        }
 
         return (0);
 } /* }}} int wh_config_node */
 
 static int wh_config (oconfig_item_t *ci) /* {{{ */
 {
-        int i;
-
-        for (i = 0; i < ci->children_num; i++)
+        for (int i = 0; i < ci->children_num; i++)
         {
                 oconfig_item_t *child = ci->children + i;
 

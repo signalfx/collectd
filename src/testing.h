@@ -24,6 +24,9 @@
  *   Florian octo Forster <octo at collectd.org>
  */
 
+#ifndef TESTING_H
+#define TESTING_H 1
+
 #include <inttypes.h>
 
 static int fail_count__ = 0;
@@ -33,7 +36,7 @@ static int check_count__ = 0;
 # define DBL_PRECISION 1e-12
 #endif
 
-#define DEF_TEST(func) static int test_##func ()
+#define DEF_TEST(func) static int test_##func (void)
 
 #define RUN_TEST(func) do { \
   int status; \
@@ -53,12 +56,14 @@ static int check_count__ = 0;
 #define OK(cond) OK1(cond, #cond)
 
 #define EXPECT_EQ_STR(expect, actual) do { \
-  if (strcmp (expect, actual) != 0) { \
+  /* Evaluate 'actual' only once. */ \
+  const char *got__ = actual; \
+  if (strcmp (expect, got__) != 0) { \
     printf ("not ok %i - %s = \"%s\", want \"%s\"\n", \
-        ++check_count__, #actual, actual, expect); \
+        ++check_count__, #actual, got__, expect); \
     return (-1); \
   } \
-  printf ("ok %i - %s = \"%s\"\n", ++check_count__, #actual, actual); \
+  printf ("ok %i - %s = \"%s\"\n", ++check_count__, #actual, got__); \
 } while (0)
 
 #define EXPECT_EQ_INT(expect, actual) do { \
@@ -109,3 +114,5 @@ static int check_count__ = 0;
   status_ = (long) (expr); \
   OK1(status_ == 0L, #expr); \
 } while (0)
+
+#endif /* TESTING_H */

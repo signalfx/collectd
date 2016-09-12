@@ -24,8 +24,9 @@
  *   Florian Forster <octo at collectd.org>
  **/
 
-#include "testing.h"
 #include "collectd.h"
+
+#include "testing.h"
 #include "utils_vl_lookup.h"
 
 static _Bool expect_new_obj = 0;
@@ -68,7 +69,7 @@ static void *lookup_class_callback (data_set_t const *ds,
   assert (expect_new_obj);
 
   memcpy (&last_class_ident, class, sizeof (last_class_ident));
-  
+
   obj = malloc (sizeof (*obj));
   strncpy (obj->host, vl->host, sizeof (obj->host));
   strncpy (obj->plugin, vl->plugin, sizeof (obj->plugin));
@@ -90,7 +91,6 @@ static int checked_lookup_add (lookup_t *obj, /* {{{ */
   identifier_t ident;
   void *user_class;
 
-  memset (&ident, 0, sizeof (ident));
   strncpy (ident.host, host, sizeof (ident.host));
   strncpy (ident.plugin, plugin, sizeof (ident.plugin));
   strncpy (ident.plugin_instance, plugin_instance, sizeof (ident.plugin_instance));
