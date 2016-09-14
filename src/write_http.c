@@ -65,8 +65,6 @@ struct wh_callback_s
 #define WH_FORMAT_JSON     1
 #define WH_FORMAT_KAIROSDB 2
         int format;
-        _Bool send_metrics;
-        _Bool send_notifications;
 
         CURL *curl;
         struct curl_slist *headers;
@@ -113,12 +111,11 @@ static void wh_reset_buffer (wh_callback_t *cb)  /* {{{ */
         }
 } /* }}} wh_reset_buffer */
 
-/* must hold cb->send_lock when calling */
-static int wh_post_nolock (wh_callback_t *cb, char const *data) /* {{{ */
+static int wh_send_buffer (wh_callback_t *cb) /* {{{ */
 {
         int status = 0;
 
-        curl_easy_setopt (cb->curl, CURLOPT_POSTFIELDS, data);
+        curl_easy_setopt (cb->curl, CURLOPT_POSTFIELDS, cb->send_buffer);
         status = curl_easy_perform (cb->curl);
 
         wh_log_http_error (cb);
@@ -130,7 +127,7 @@ static int wh_post_nolock (wh_callback_t *cb, char const *data) /* {{{ */
                                 status, cb->curl_errbuf);
         }
         return (status);
-} /* }}} wh_post_nolock */
+} /* }}} wh_send_buffer */
 
 static int wh_callback_init (wh_callback_t *cb) /* {{{ */
 {
@@ -250,7 +247,7 @@ static int wh_flush_nolock (cdtime_t timeout, wh_callback_t *cb) /* {{{ */
                         return (0);
                 }
 
-                status = wh_post_nolock (cb, cb->send_buffer);
+                status = wh_send_buffer (cb);
                 wh_reset_buffer (cb);
         }
         else if (cb->format == WH_FORMAT_JSON || cb->format == WH_FORMAT_KAIROSDB)
@@ -272,7 +269,7 @@ static int wh_flush_nolock (cdtime_t timeout, wh_callback_t *cb) /* {{{ */
                         return (status);
                 }
 
-                status = wh_post_nolock (cb, cb->send_buffer);
+                status = wh_send_buffer (cb);
                 wh_reset_buffer (cb);
         }
         else
@@ -300,11 +297,15 @@ static int wh_flush (cdtime_t timeout, /* {{{ */
 
         pthread_mutex_lock (&cb->send_lock);
 
-        if (wh_callback_init (cb) != 0)
+        if (cb->curl == NULL)
         {
-                ERROR ("write_http plugin: wh_callback_init failed.");
-                pthread_mutex_unlock (&cb->send_lock);
-                return (-1);
+                status = wh_callback_init (cb);
+                if (status != 0)
+                {
+                        ERROR ("write_http plugin: wh_callback_init failed.");
+                        pthread_mutex_unlock (&cb->send_lock);
+                        return (-1);
+                }
         }
 
         status = wh_flush_nolock (timeout, cb);
@@ -401,11 +402,16 @@ static int wh_write_command (const data_set_t *ds, const value_list_t *vl, /* {{
         }
 
         pthread_mutex_lock (&cb->send_lock);
-        if (wh_callback_init (cb) != 0)
+
+        if (cb->curl == NULL)
         {
-                ERROR ("write_http plugin: wh_callback_init failed.");
-                pthread_mutex_unlock (&cb->send_lock);
-                return (-1);
+                status = wh_callback_init (cb);
+                if (status != 0)
+                {
+                        ERROR ("write_http plugin: wh_callback_init failed.");
+                        pthread_mutex_unlock (&cb->send_lock);
+                        return (-1);
+                }
         }
 
         if (command_len >= cb->send_buffer_free)
@@ -444,11 +450,16 @@ static int wh_write_json (const data_set_t *ds, const value_list_t *vl, /* {{{ *
         int status;
 
         pthread_mutex_lock (&cb->send_lock);
-        if (wh_callback_init (cb) != 0)
+
+        if (cb->curl == NULL)
         {
-                ERROR ("write_http plugin: wh_callback_init failed.");
-                pthread_mutex_unlock (&cb->send_lock);
-                return (-1);
+                status = wh_callback_init (cb);
+                if (status != 0)
+                {
+                        ERROR ("write_http plugin: wh_callback_init failed.");
+                        pthread_mutex_unlock (&cb->send_lock);
+                        return (-1);
+                }
         }
 
         status = format_json_value_list (cb->send_buffer,
@@ -551,7 +562,6 @@ static int wh_write (const data_set_t *ds, const value_list_t *vl, /* {{{ */
                 return (-EINVAL);
 
         cb = user_data->data;
-        assert (cb->send_metrics);
 
         switch(cb->format) {
             case WH_FORMAT_JSON:
@@ -566,39 +576,6 @@ static int wh_write (const data_set_t *ds, const value_list_t *vl, /* {{{ */
         }
         return (status);
 } /* }}} int wh_write */
-
-static int wh_notify (notification_t const *n, user_data_t *ud) /* {{{ */
-{
-        wh_callback_t *cb;
-        char alert[4096];
-        int status;
-
-        if ((ud == NULL) || (ud->data == NULL))
-                return (EINVAL);
-
-        cb = ud->data;
-        assert (cb->send_notifications);
-
-        status = format_json_notification (alert, sizeof (alert), n);
-        if (status != 0)
-        {
-                ERROR ("write_http plugin: formatting notification failed");
-                return status;
-        }
-
-        pthread_mutex_lock (&cb->send_lock);
-        if (wh_callback_init (cb) != 0)
-        {
-                ERROR ("write_http plugin: wh_callback_init failed.");
-                pthread_mutex_unlock (&cb->send_lock);
-                return (-1);
-        }
-
-        status = wh_post_nolock (cb, alert);
-        pthread_mutex_unlock (&cb->send_lock);
-
-        return (status);
-} /* }}} int wh_notify */
 
 static int config_set_format (wh_callback_t *cb, /* {{{ */
                 oconfig_item_t *ci)
@@ -670,8 +647,7 @@ static int wh_config_node (oconfig_item_t *ci) /* {{{ */
         cb->timeout = 0;
         cb->log_http_error = 0;
         cb->headers = NULL;
-        cb->send_metrics = 1;
-        cb->send_notifications = 0;
+
 
         pthread_mutex_init (&cb->send_lock, /* attr = */ NULL);
 
@@ -740,10 +716,6 @@ static int wh_config_node (oconfig_item_t *ci) /* {{{ */
                 }
                 else if (strcasecmp ("Format", child->key) == 0)
                         status = config_set_format (cb, child);
-                else if (strcasecmp ("Metrics", child->key) == 0)
-                        cf_util_get_boolean (child, &cb->send_metrics);
-                else if (strcasecmp ("Notifications", child->key) == 0)
-                        cf_util_get_boolean (child, &cb->send_notifications);
                 else if (strcasecmp ("StoreRates", child->key) == 0)
                         status = cf_util_get_boolean (child, &cb->store_rates);
                 else if (strcasecmp ("BufferSize", child->key) == 0)
@@ -777,14 +749,6 @@ static int wh_config_node (oconfig_item_t *ci) /* {{{ */
         {
                 ERROR ("write_http plugin: no URL defined for instance '%s'",
                         cb->name);
-                wh_callback_free (cb);
-                return (-1);
-        }
-
-        if (!cb->send_metrics && !cb->send_notifications)
-        {
-                ERROR ("write_http plugin: Neither metrics nor notifications "
-                       "are enabled for \"%s\".", cb->name);
                 wh_callback_free (cb);
                 return (-1);
         }
@@ -823,20 +787,7 @@ static int wh_config_node (oconfig_item_t *ci) /* {{{ */
         plugin_register_flush (callback_name, wh_flush, &user_data);
 
         user_data.free_func = wh_callback_free;
-
-        if (cb->send_metrics)
-        {
-                plugin_register_write (callback_name, wh_write, &user_data);
-                user_data.free_func = NULL;
-
-                plugin_register_flush (callback_name, wh_flush, &user_data);
-        }
-
-        if (cb->send_notifications)
-        {
-                plugin_register_notification (callback_name, wh_notify, &user_data);
-                user_data.free_func = NULL;
-        }
+        plugin_register_write (callback_name, wh_write, &user_data);
 
         return (0);
 } /* }}} int wh_config_node */
