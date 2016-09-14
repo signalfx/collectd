@@ -1346,34 +1346,18 @@ int plugin_register_flush (const char *name,
 
 	if (ctx.flush_interval != 0)
 	{
-		char *flush_prefix = "flush/";
-		size_t prefix_size;
 		char *flush_name;
-		size_t name_size;
-		user_data_t ud;
 		flush_callback_t *cb;
 
-		prefix_size = strlen(flush_prefix);
-		name_size = strlen(name);
-
-		flush_name = (char *) malloc (sizeof (char) *
-			(name_size + prefix_size + 1));
+		flush_name = plugin_flush_callback_name (name);
 		if (flush_name == NULL)
-		{
-			ERROR ("plugin_register_flush: malloc failed.");
-			plugin_unregister (list_flush, name);
 			return (-1);
-		}
 
-		sstrncpy (flush_name, flush_prefix, prefix_size + 1);
-		sstrncpy (flush_name + prefix_size, name, name_size + 1);
-
-		cb = (flush_callback_t *)malloc(sizeof(flush_callback_t));
+		cb = malloc(sizeof (*cb));
 		if (cb == NULL)
 		{
 			ERROR ("plugin_register_flush: malloc failed.");
-			sfree(flush_name);
-			plugin_unregister (list_flush, name);
+			sfree (flush_name);
 			return (-1);
 		}
 
@@ -1381,31 +1365,27 @@ int plugin_register_flush (const char *name,
 		if (cb->name == NULL)
 		{
 			ERROR ("plugin_register_flush: strdup failed.");
-			sfree(cb);
-			sfree(flush_name);
-			plugin_unregister (list_flush, name);
+			sfree (cb);
+			sfree (flush_name);
 			return (-1);
 		}
 		cb->timeout = ctx.flush_timeout;
 
-		ud.data = cb;
-		ud.free_func = plugin_flush_timeout_callback_free;
+		ud->data = cb;
+		ud->free_func = plugin_flush_timeout_callback_free;
 
-		struct timespec ts = { 0 };
-		CDTIME_T_TO_TIMESPEC (ctx.flush_interval, &ts);
 		status = plugin_register_complex_read (
 			/* group     = */ "flush",
 			/* name      = */ flush_name,
 			/* callback  = */ plugin_flush_timeout_callback,
-			/* interval  = */ &ts,
-			/* user data = */ &ud);
+			/* interval  = */ ctx.flush_interval,
+			/* user data = */ ud);
 
-		sfree(flush_name);
+		sfree (flush_name);
 		if (status != 0)
 		{
-			sfree(cb->name);
-			sfree(cb);
-			plugin_unregister (list_flush, name);
+			sfree (cb->name);
+			sfree (cb);
 			return status;
 		}
 	}
