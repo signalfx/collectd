@@ -29,9 +29,9 @@
  */
 
 #include "collectd.h"
+
 #include "common.h"
 
-#include "configfile.h"
 #include "plugin.h"
 
 #define log_err(...) ERROR ("table plugin: " __VA_ARGS__)
@@ -42,12 +42,12 @@
  */
 
 typedef struct {
-	char  *type;
-	char  *instance_prefix;
-	int   *instances;
-	size_t instances_num;
-	int   *values;
-	size_t values_num;
+	char   *type;
+	char   *instance_prefix;
+	size_t *instances;
+	size_t  instances_num;
+	size_t *values;
+	size_t  values_num;
 
 	const data_set_t *ds;
 } tbl_result_t;
@@ -105,13 +105,11 @@ static void tbl_setup (tbl_t *tbl, char *file)
 
 static void tbl_clear (tbl_t *tbl)
 {
-	size_t i;
-
 	sfree (tbl->file);
 	sfree (tbl->sep);
 	sfree (tbl->instance);
 
-	for (i = 0; i < tbl->results_num; ++i)
+	for (size_t i = 0; i < tbl->results_num; ++i)
 		tbl_result_clear (tbl->results + i);
 	sfree (tbl->results);
 	tbl->results_num = 0;
@@ -139,38 +137,39 @@ static int tbl_config_set_s (char *name, char **var, oconfig_item_t *ci)
 	return 0;
 } /* tbl_config_set_separator */
 
-static int tbl_config_append_array_i (char *name, int **var, size_t *len,
+static int tbl_config_append_array_i (char *name, size_t **var, size_t *len,
 		oconfig_item_t *ci)
 {
-	int *tmp;
-
-	size_t i;
+	size_t *tmp;
+	size_t num;
 
 	if (1 > ci->values_num) {
 		log_err ("\"%s\" expects at least one argument.", name);
 		return 1;
 	}
 
-	for (i = 0; i < ci->values_num; ++i) {
+	num = (size_t) ci->values_num;
+	for (size_t i = 0; i < num; ++i) {
 		if (OCONFIG_TYPE_NUMBER != ci->values[i].type) {
 			log_err ("\"%s\" expects numerical arguments only.", name);
 			return 1;
 		}
 	}
 
-	*len += ci->values_num;
-	tmp = (int *)realloc (*var, *len * sizeof (**var));
+	tmp = realloc (*var, ((*len) + num) * sizeof (**var));
 	if (NULL == tmp) {
 		char errbuf[1024];
 		log_err ("realloc failed: %s.",
 				sstrerror (errno, errbuf, sizeof (errbuf)));
 		return -1;
 	}
-
 	*var = tmp;
 
-	for (i = *len - ci->values_num; i < *len; ++i)
-		(*var)[i] = (int)ci->values[i].value.number;
+	for (size_t i = 0; i < num; ++i) {
+		(*var)[*len] = (size_t) ci->values[i].value.number;
+		(*len)++;
+	}
+
 	return 0;
 } /* tbl_config_append_array_s */
 
@@ -179,14 +178,13 @@ static int tbl_config_result (tbl_t *tbl, oconfig_item_t *ci)
 	tbl_result_t *res;
 
 	int status = 0;
-	size_t i;
 
 	if (0 != ci->values_num) {
 		log_err ("<Result> does not expect any arguments.");
 		return 1;
 	}
 
-	res = (tbl_result_t *)realloc (tbl->results,
+	res = realloc (tbl->results,
 			(tbl->results_num + 1) * sizeof (*tbl->results));
 	if (res == NULL) {
 		char errbuf[1024];
@@ -201,7 +199,7 @@ static int tbl_config_result (tbl_t *tbl, oconfig_item_t *ci)
 	res = tbl->results + tbl->results_num - 1;
 	tbl_result_setup (res);
 
-	for (i = 0; i < ci->children_num; ++i) {
+	for (int i = 0; i < ci->children_num; ++i) {
 		oconfig_item_t *c = ci->children + i;
 
 		if (0 == strcasecmp (c->key, "Type"))
@@ -244,7 +242,6 @@ static int tbl_config_table (oconfig_item_t *ci)
 	tbl_t *tbl;
 
 	int status = 0;
-	size_t i;
 
 	if ((1 != ci->values_num)
 			|| (OCONFIG_TYPE_STRING != ci->values[0].type)) {
@@ -252,7 +249,7 @@ static int tbl_config_table (oconfig_item_t *ci)
 		return 1;
 	}
 
-	tbl = (tbl_t *)realloc (tables, (tables_num + 1) * sizeof (*tables));
+	tbl = realloc (tables, (tables_num + 1) * sizeof (*tables));
 	if (NULL == tbl) {
 		char errbuf[1024];
 		log_err ("realloc failed: %s.",
@@ -266,7 +263,7 @@ static int tbl_config_table (oconfig_item_t *ci)
 	tbl = tables + tables_num - 1;
 	tbl_setup (tbl, ci->values[0].value.string);
 
-	for (i = 0; i < ci->children_num; ++i) {
+	for (size_t i = 0; i < ((size_t) ci->children_num); ++i) {
 		oconfig_item_t *c = ci->children + i;
 
 		if (0 == strcasecmp (c->key, "Separator"))
@@ -304,15 +301,14 @@ static int tbl_config_table (oconfig_item_t *ci)
 		return status;
 	}
 
-	for (i = 0; i < tbl->results_num; ++i) {
+	for (size_t i = 0; i < tbl->results_num; ++i) {
 		tbl_result_t *res = tbl->results + i;
-		size_t j;
 
-		for (j = 0; j < res->instances_num; ++j)
+		for (size_t j = 0; j < res->instances_num; ++j)
 			if (res->instances[j] > tbl->max_colnum)
 				tbl->max_colnum = res->instances[j];
 
-		for (j = 0; j < res->values_num; ++j)
+		for (size_t j = 0; j < res->values_num; ++j)
 			if (res->values[j] > tbl->max_colnum)
 				tbl->max_colnum = res->values[j];
 	}
@@ -321,9 +317,7 @@ static int tbl_config_table (oconfig_item_t *ci)
 
 static int tbl_config (oconfig_item_t *ci)
 {
-	size_t i;
-
-	for (i = 0; i < ci->children_num; ++i) {
+	for (int i = 0; i < ci->children_num; ++i) {
 		oconfig_item_t *c = ci->children + i;
 
 		if (0 == strcasecmp (c->key, "Table"))
@@ -340,9 +334,7 @@ static int tbl_config (oconfig_item_t *ci)
 
 static int tbl_prepare (tbl_t *tbl)
 {
-	size_t i;
-
-	for (i = 0; i < tbl->results_num; ++i) {
+	for (size_t i = 0; i < tbl->results_num; ++i) {
 		tbl_result_t *res = tbl->results + i;
 
 		res->ds = plugin_get_ds (res->type);
@@ -352,9 +344,9 @@ static int tbl_prepare (tbl_t *tbl)
 			return -1;
 		}
 
-		if (res->values_num != (size_t)res->ds->ds_num) {
+		if (res->values_num != res->ds->ds_num) {
 			log_err ("Invalid type \"%s\". Expected %zu data source%s, "
-					"got %i.", res->type, res->values_num,
+					"got %zu.", res->type, res->values_num,
 					(1 == res->values_num) ? "" : "s",
 					res->ds->ds_num);
 			return -1;
@@ -365,9 +357,7 @@ static int tbl_prepare (tbl_t *tbl)
 
 static int tbl_finish (tbl_t *tbl)
 {
-	size_t i;
-
-	for (i = 0; i < tbl->results_num; ++i)
+	for (size_t i = 0; i < tbl->results_num; ++i)
 		tbl->results[i].ds = NULL;
 	return 0;
 } /* tbl_finish */
@@ -378,12 +368,10 @@ static int tbl_result_dispatch (tbl_t *tbl, tbl_result_t *res,
 	value_list_t vl = VALUE_LIST_INIT;
 	value_t values[res->values_num];
 
-	size_t i;
-
 	assert (NULL != res->ds);
 	assert (res->values_num == res->ds->ds_num);
 
-	for (i = 0; i < res->values_num; ++i) {
+	for (size_t i = 0; i < res->values_num; ++i) {
 		char *value;
 
 		assert (res->values[i] < fields_num);
@@ -410,7 +398,7 @@ static int tbl_result_dispatch (tbl_t *tbl, tbl_result_t *res,
 		char *instances[res->instances_num];
 		char  instances_str[DATA_MAX_NAME_LEN];
 
-		for (i = 0; i < res->instances_num; ++i) {
+		for (size_t i = 0; i < res->instances_num; ++i) {
 			assert (res->instances[i] < fields_num);
 			instances[i] = fields[res->instances[i]];
 		}
@@ -442,9 +430,8 @@ static int tbl_parse_line (tbl_t *tbl, char *line, size_t len)
 	char *fields[tbl->max_colnum + 1];
 	char *ptr, *saveptr;
 
-	size_t i;
+	size_t i = 0;
 
-	i = 0;
 	ptr = line;
 	saveptr = NULL;
 	while (NULL != (fields[i] = strtok_r (ptr, tbl->sep, &saveptr))) {
@@ -456,7 +443,7 @@ static int tbl_parse_line (tbl_t *tbl, char *line, size_t len)
 	}
 
 	if (i <= tbl->max_colnum) {
-		log_err ("Not enough columns in line "
+		log_warn ("Not enough columns in line "
 				"(expected at least %zu, got %zu).",
 				tbl->max_colnum + 1, i);
 		return -1;
@@ -488,11 +475,11 @@ static int tbl_read_table (tbl_t *tbl)
 	while (NULL != fgets (buf, sizeof (buf), fh)) {
 		if ('\0' != buf[sizeof (buf) - 1]) {
 			buf[sizeof (buf) - 1] = '\0';
-			log_err ("Table %s: Truncated line: %s", tbl->file, buf);
+			log_warn ("Table %s: Truncated line: %s", tbl->file, buf);
 		}
 
 		if (0 != tbl_parse_line (tbl, buf, sizeof (buf))) {
-			log_err ("Table %s: Failed to parse line: %s", tbl->file, buf);
+			log_warn ("Table %s: Failed to parse line: %s", tbl->file, buf);
 			continue;
 		}
 	}
@@ -516,12 +503,11 @@ static int tbl_read_table (tbl_t *tbl)
 static int tbl_read (void)
 {
 	int status = -1;
-	size_t i;
 
 	if (0 == tables_num)
 		return 0;
 
-	for (i = 0; i < tables_num; ++i) {
+	for (size_t i = 0; i < tables_num; ++i) {
 		tbl_t *tbl = tables + i;
 
 		if (0 != tbl_prepare (tbl)) {
@@ -539,9 +525,7 @@ static int tbl_read (void)
 
 static int tbl_shutdown (void)
 {
-	size_t i;
-
-	for (i = 0; i < tables_num; ++i)
+	for (size_t i = 0; i < tables_num; ++i)
 		tbl_clear (&tables[i]);
 	sfree (tables);
 	return 0;

@@ -25,6 +25,7 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
 
@@ -326,12 +327,10 @@ static int cr_config_router (oconfig_item_t *ci) /* {{{ */
   char read_name[128];
   user_data_t user_data;
   int status;
-  int i;
 
-  router_data = malloc (sizeof (*router_data));
+  router_data = calloc (1, sizeof (*router_data));
   if (router_data == NULL)
     return (-1);
-  memset (router_data, 0, sizeof (*router_data));
   router_data->connection = NULL;
   router_data->node = NULL;
   router_data->service = NULL;
@@ -339,7 +338,7 @@ static int cr_config_router (oconfig_item_t *ci) /* {{{ */
   router_data->password = NULL;
 
   status = 0;
-  for (i = 0; i < ci->children_num; i++)
+  for (int i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *child = ci->children + i;
 
@@ -414,7 +413,7 @@ static int cr_config_router (oconfig_item_t *ci) /* {{{ */
   user_data.free_func = (void *) cr_free_data;
   if (status == 0)
     status = plugin_register_complex_read (/* group = */ NULL, read_name,
-	cr_read, /* interval = */ NULL, &user_data);
+	cr_read, /* interval = */ 0, &user_data);
 
   if (status != 0)
     cr_free_data (router_data);
@@ -424,9 +423,7 @@ static int cr_config_router (oconfig_item_t *ci) /* {{{ */
 
 static int cr_config (oconfig_item_t *ci)
 {
-  int i;
-
-  for (i = 0; i < ci->children_num; i++)
+  for (int i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *child = ci->children + i;
 

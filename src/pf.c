@@ -20,14 +20,12 @@
  */
 
 #include "collectd.h"
+
 #include "plugin.h"
 #include "common.h"
 
 #if HAVE_SYS_IOCTL_H
 # include <sys/ioctl.h>
-#endif
-#if HAVE_SYS_SOCKET_H
-# include <sys/socket.h>
 #endif
 #if HAVE_NET_IF_H
 # include <net/if.h>
@@ -85,7 +83,6 @@ static int pf_read (void)
 	struct pf_status state;
 	int fd;
 	int status;
-	int i;
 
 	fd = open (pf_device, O_RDONLY);
 	if (fd < 0)
@@ -97,7 +94,6 @@ static int pf_read (void)
 		return (-1);
 	}
 
-	memset (&state, 0, sizeof (state));
 	status = ioctl (fd, DIOCGETSTATUS, &state);
 	if (status != 0)
 	{
@@ -109,7 +105,6 @@ static int pf_read (void)
 	}
 
 	close (fd);
-	fd = -1;
 
 	if (!state.running)
 	{
@@ -117,16 +112,16 @@ static int pf_read (void)
 		return (-1);
 	}
 
-	for (i = 0; i < PFRES_MAX; i++)
+	for (int i = 0; i < PFRES_MAX; i++)
 		pf_submit ("pf_counters", pf_reasons[i], state.counters[i],
 				/* is gauge = */ 0);
-	for (i = 0; i < LCNT_MAX; i++)
+	for (int i = 0; i < LCNT_MAX; i++)
 		pf_submit ("pf_limits", pf_lcounters[i], state.lcounters[i],
 				/* is gauge = */ 0);
-	for (i = 0; i < FCNT_MAX; i++)
+	for (int i = 0; i < FCNT_MAX; i++)
 		pf_submit ("pf_state", pf_fcounters[i], state.fcounters[i],
 				/* is gauge = */ 0);
-	for (i = 0; i < SCNT_MAX; i++)
+	for (int i = 0; i < SCNT_MAX; i++)
 		pf_submit ("pf_source", pf_scounters[i], state.scounters[i],
 				/* is gauge = */ 0);
 

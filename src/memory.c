@@ -24,6 +24,7 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
 
@@ -76,6 +77,7 @@ static vm_size_t pagesize;
 #elif HAVE_LIBKSTAT
 static int pagesize;
 static kstat_t *ksp;
+static kstat_t *ksz;
 /* #endif HAVE_LIBKSTAT */
 
 #elif HAVE_SYSCTL
@@ -97,9 +99,7 @@ static _Bool values_percentage = 0;
 
 static int memory_config (oconfig_item_t *ci) /* {{{ */
 {
-	int i;
-
-	for (i = 0; i < ci->children_num; i++)
+	for (int i = 0; i < ci->children_num; i++)
 	{
 		oconfig_item_t *child = ci->children + i;
 		if (strcasecmp ("ValuesAbsolute", child->key) == 0)
@@ -137,6 +137,12 @@ static int memory_init (void)
 		ksp = NULL;
 		return (-1);
 	}
+	if (get_kstat (&ksz, "zfs", 0, "arcstats") != 0)
+	{
+		ksz = NULL;
+		return (-1);
+	}
+
 /* #endif HAVE_LIBKSTAT */
 
 #elif HAVE_SYSCTL
@@ -230,7 +236,7 @@ static int memory_read_internal (value_list_t *vl)
 	 * vm.stats.vm.v_inactive_count: 113730
 	 * vm.stats.vm.v_cache_count: 10809
 	 */
-	char *sysctl_keys[8] =
+	const char *sysctl_keys[8] =
 	{
 		"vm.stats.vm.v_page_size",
 		"vm.stats.vm.v_page_count",
@@ -243,9 +249,7 @@ static int memory_read_internal (value_list_t *vl)
 	};
 	double sysctl_vals[8];
 
-	int    i;
-
-	for (i = 0; sysctl_keys[i] != NULL; i++)
+	for (int i = 0; sysctl_keys[i] != NULL; i++)
 	{
 		int value;
 		size_t value_len = sizeof (value);
@@ -263,7 +267,7 @@ static int memory_read_internal (value_list_t *vl)
 	} /* for (sysctl_keys) */
 
 	/* multiply all all page counts with the pagesize */
-	for (i = 1; sysctl_keys[i] != NULL; i++)
+	for (int i = 1; sysctl_keys[i] != NULL; i++)
 		if (!isnan (sysctl_vals[i]))
 			sysctl_vals[i] *= sysctl_vals[0];
 
@@ -371,6 +375,8 @@ static int memory_read_internal (value_list_t *vl)
 	long long mem_lock;
 	long long mem_kern;
 	long long mem_unus;
+	long long arcsize;
+
 
 	long long pp_kernel;
 	long long physmem;
@@ -378,16 +384,19 @@ static int memory_read_internal (value_list_t *vl)
 
 	if (ksp == NULL)
 		return (-1);
+	if (ksz == NULL)
+		return (-1);
 
 	mem_used = get_kstat_value (ksp, "pagestotal");
 	mem_free = get_kstat_value (ksp, "pagesfree");
 	mem_lock = get_kstat_value (ksp, "pageslocked");
-	mem_kern = 0;
-	mem_unus = 0;
-
+	arcsize = get_kstat_value (ksz, "size");
 	pp_kernel = get_kstat_value (ksp, "pp_kernel");
 	physmem = get_kstat_value (ksp, "physmem");
 	availrmem = get_kstat_value (ksp, "availrmem");
+
+	mem_kern = 0;
+	mem_unus = 0;
 
 	if ((mem_used < 0LL) || (mem_free < 0LL) || (mem_lock < 0LL))
 	{
@@ -431,23 +440,25 @@ static int memory_read_internal (value_list_t *vl)
 	mem_lock *= pagesize; /* some? ;) */
 	mem_kern *= pagesize; /* it's 2011 RAM is cheap */
 	mem_unus *= pagesize;
+	mem_kern -= arcsize;
+
 
 	MEMORY_SUBMIT ("used",     (gauge_t) mem_used,
 	               "free",     (gauge_t) mem_free,
 	               "locked",   (gauge_t) mem_lock,
 	               "kernel",   (gauge_t) mem_kern,
+	               "arc",      (gauge_t) arcsize,
 	               "unusable", (gauge_t) mem_unus);
 /* #endif HAVE_LIBKSTAT */
 
 #elif HAVE_SYSCTL
 	int mib[] = {CTL_VM, VM_METER};
-	struct vmtotal vmtotal;
+	struct vmtotal vmtotal = { 0 };
 	gauge_t mem_active;
 	gauge_t mem_inactive;
 	gauge_t mem_free;
 	size_t size;
 
-	memset (&vmtotal, 0, sizeof (vmtotal));
 	size = sizeof (vmtotal);
 
 	if (sysctl (mib, 2, &vmtotal, &size, NULL, 0) < 0) {
@@ -480,9 +491,8 @@ static int memory_read_internal (value_list_t *vl)
 /* #endif HAVE_LIBSTATGRAB */
 
 #elif HAVE_PERFSTAT
-	perfstat_memory_total_t pmemory;
+	perfstat_memory_total_t pmemory = { 0 };
 
-	memset (&pmemory, 0, sizeof (pmemory));
 	if (perfstat_memory_total(NULL, &pmemory, sizeof(pmemory), 1) < 0)
 	{
 		char errbuf[1024];

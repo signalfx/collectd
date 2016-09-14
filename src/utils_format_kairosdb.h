@@ -1,6 +1,6 @@
 /**
- * collectd - src/tests/mock/utils_time.c
- * Copyright (C) 2013       Florian octo Forster
+ * collectd - src/utils_format_kairosdb.h
+ * Copyright (C) 2016       Aurelien Rougemont
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -21,13 +21,26 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *   Florian octo Forster <octo at collectd.org>
- */
+ *   Aurelien beorn Rougemont <beorn at gandi dot net>
+ **/
 
-#include "utils_time.h"
+#ifndef UTILS_FORMAT_KAIROSDB_H
+#define UTILS_FORMAT_KAIROSDB_H 1
 
-cdtime_t cdtime (void)
-{
-  return (0);
-}
+#include "collectd.h"
 
+#include "plugin.h"
+
+#ifndef JSON_GAUGE_FORMAT
+# define JSON_GAUGE_FORMAT GAUGE_FORMAT
+#endif
+
+int format_kairosdb_initialize (char *buffer,
+    size_t *ret_buffer_fill, size_t *ret_buffer_free);
+int format_kairosdb_value_list (char *buffer,
+    size_t *ret_buffer_fill, size_t *ret_buffer_free,
+    const data_set_t *ds, const value_list_t *vl, int store_rates);
+int format_kairosdb_finalize (char *buffer,
+    size_t *ret_buffer_fill, size_t *ret_buffer_free);
+
+#endif /* UTILS_FORMAT_KAIROSDB_H */

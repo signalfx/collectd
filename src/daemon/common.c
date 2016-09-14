@@ -32,13 +32,10 @@
 #endif
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
 #include "utils_cache.h"
-
-#if HAVE_PTHREAD_H
-# include <pthread.h>
-#endif
 
 #ifdef HAVE_MATH_H
 # include <math.h>
@@ -46,7 +43,6 @@
 
 /* for getaddrinfo */
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <netdb.h>
 
 #include <poll.h>
@@ -55,9 +51,17 @@
 # include <netinet/in.h>
 #endif
 
+#if HAVE_NETINET_TCP_H
+# include <netinet/tcp.h>
+#endif
+
 /* for ntohl and htonl */
 #if HAVE_ARPA_INET_H
 # include <arpa/inet.h>
+#endif
+
+#ifdef HAVE_SYS_CAPABILITY_H
+# include <sys/capability.h>
 #endif
 
 #ifdef HAVE_LIBKSTAT
@@ -116,10 +120,9 @@ char *ssnprintf_alloc (char const *format, ...) /* {{{ */
 		return (strdup (static_buffer));
 
 	/* Allocate a buffer large enough to hold the string. */
-	alloc_buffer = malloc (alloc_buffer_size);
+	alloc_buffer = calloc (1, alloc_buffer_size);
 	if (alloc_buffer == NULL)
 		return (NULL);
-	memset (alloc_buffer, 0, alloc_buffer_size);
 
 	/* Print again into this new buffer. */
 	va_start (ap, format);
@@ -145,7 +148,7 @@ char *sstrdup (const char *s)
 	/* Do not use `strdup' here, because it's not specified in POSIX. It's
 	 * ``only'' an XSI extension. */
 	sz = strlen (s) + 1;
-	r = (char *) malloc (sizeof (char) * sz);
+	r = malloc (sz);
 	if (r == NULL)
 	{
 		ERROR ("sstrdup: Out of memory.");
@@ -259,8 +262,8 @@ ssize_t sread (int fd, void *buf, size_t count)
 
 		assert ((0 > status) || (nleft >= (size_t)status));
 
-		nleft = nleft - status;
-		ptr   = ptr   + status;
+		nleft = nleft - ((size_t) status);
+		ptr   = ptr   + ((size_t) status);
 	}
 
 	return (0);
@@ -277,6 +280,9 @@ ssize_t swrite (int fd, const void *buf, size_t count)
 	ptr   = (const char *) buf;
 	nleft = count;
 	
+	if (fd < 0)
+		return (-1);
+
 	/* checking for closed peer connection */
 	pfd.fd = fd;
 	pfd.events = POLLIN | POLLHUP;
@@ -300,8 +306,8 @@ ssize_t swrite (int fd, const void *buf, size_t count)
 		if (status < 0)
 			return (status);
 
-		nleft = nleft - status;
-		ptr   = ptr   + status;
+		nleft = nleft - ((size_t) status);
+		ptr   = ptr   + ((size_t) status);
 	}
 
 	return (0);
@@ -335,9 +341,8 @@ int strjoin (char *buffer, size_t buffer_size,
 	size_t avail;
 	char *ptr;
 	size_t sep_len;
-	size_t i;
 
-	if ((buffer_size < 1) || (fields_num <= 0))
+	if ((buffer_size < 1) || (fields_num == 0))
 		return (-1);
 
 	memset (buffer, 0, buffer_size);
@@ -348,7 +353,7 @@ int strjoin (char *buffer, size_t buffer_size,
 	if (sep != NULL)
 		sep_len = strlen (sep);
 
-	for (i = 0; i < fields_num; i++)
+	for (size_t i = 0; i < fields_num; i++)
 	{
 		size_t field_len;
 
@@ -372,34 +377,12 @@ int strjoin (char *buffer, size_t buffer_size,
 	}
 
 	assert (buffer[buffer_size - 1] == 0);
-	return (strlen (buffer));
+	return ((int) strlen (buffer));
 }
-
-int strsubstitute (char *str, char c_from, char c_to)
-{
-	int ret;
-
-	if (str == NULL)
-		return (-1);
-
-	ret = 0;
-	while (*str != '\0')
-	{
-		if (*str == c_from)
-		{
-			*str = c_to;
-			ret++;
-		}
-		str++;
-	}
-
-	return (ret);
-} /* int strsubstitute */
 
 int escape_string (char *buffer, size_t buffer_size)
 {
   char *temp;
-  size_t i;
   size_t j;
 
   /* Check if we need to escape at all first */
@@ -410,15 +393,14 @@ int escape_string (char *buffer, size_t buffer_size)
   if (buffer_size < 3)
     return (EINVAL);
 
-  temp = (char *) malloc (buffer_size);
+  temp = calloc (1, buffer_size);
   if (temp == NULL)
     return (ENOMEM);
-  memset (temp, 0, buffer_size);
 
   temp[0] = '"';
   j = 1;
 
-  for (i = 0; i < buffer_size; i++)
+  for (size_t i = 0; i < buffer_size; i++)
   {
     if (buffer[i] == 0)
     {
@@ -452,9 +434,7 @@ int escape_string (char *buffer, size_t buffer_size)
 
 int strunescape (char *buf, size_t buf_len)
 {
-	size_t i;
-
-	for (i = 0; (i < buf_len) && (buf[i] != '\0'); ++i)
+	for (size_t i = 0; (i < buf_len) && (buf[i] != '\0'); ++i)
 	{
 		if (buf[i] != '\\')
 			continue;
@@ -507,7 +487,6 @@ size_t strstripnewline (char *buffer)
 
 int escape_slashes (char *buffer, size_t buffer_size)
 {
-	int i;
 	size_t buffer_len;
 
 	buffer_len = strlen (buffer);
@@ -530,7 +509,7 @@ int escape_slashes (char *buffer, size_t buffer_size)
 		buffer_len--;
 	}
 
-	for (i = 0; i < buffer_len; i++)
+	for (size_t i = 0; i < buffer_len; i++)
 	{
 		if (buffer[i] == '/')
 			buffer[i] = '_';
@@ -541,9 +520,7 @@ int escape_slashes (char *buffer, size_t buffer_size)
 
 void replace_special (char *buffer, size_t buffer_size)
 {
-	size_t i;
-
-	for (i = 0; i < buffer_size; i++)
+	for (size_t i = 0; i < buffer_size; i++)
 	{
 		if (buffer[i] == 0)
 			return;
@@ -617,7 +594,6 @@ int check_create_dir (const char *file_orig)
 	int   last_is_file = 1;
 	int   path_is_absolute = 0;
 	size_t len;
-	int   i;
 
 	/*
 	 * Sanity checks first
@@ -663,7 +639,7 @@ int check_create_dir (const char *file_orig)
 	/*
 	 * For each component, do..
 	 */
-	for (i = 0; i < (fields_num - last_is_file); i++)
+	for (int i = 0; i < (fields_num - last_is_file); i++)
 	{
 		/*
 		 * Do not create directories that start with a dot. This
@@ -681,8 +657,8 @@ int check_create_dir (const char *file_orig)
 		 * Join the components together again
 		 */
 		dir[0] = '/';
-		if (strjoin (dir + path_is_absolute, dir_len - path_is_absolute,
-					fields, i + 1, "/") < 0)
+		if (strjoin (dir + path_is_absolute, (size_t) (dir_len - path_is_absolute),
+					fields, (size_t) (i + 1), "/") < 0)
 		{
 			ERROR ("strjoin failed: `%s', component #%i", file_orig, i);
 			return (-1);
@@ -962,7 +938,6 @@ int format_values (char *ret, size_t ret_len, /* {{{ */
 {
         size_t offset = 0;
         int status;
-        int i;
         gauge_t *rates = NULL;
 
         assert (0 == strcmp (ds->type, vl->type));
@@ -988,7 +963,7 @@ int format_values (char *ret, size_t ret_len, /* {{{ */
 
         BUFFER_ADD ("%.3f", CDTIME_T_TO_DOUBLE (vl->time));
 
-        for (i = 0; i < ds->ds_num; i++)
+        for (size_t i = 0; i < ds->ds_num; i++)
         {
                 if (ds->ds[i].type == DS_TYPE_GAUGE)
                         BUFFER_ADD (":"GAUGE_FORMAT, vl->values[i].gauge);
@@ -1165,7 +1140,7 @@ int parse_value (const char *value_orig, value_t *ret_value, int ds_type)
 
 int parse_values (char *buffer, value_list_t *vl, const data_set_t *ds)
 {
-	int i;
+	size_t i;
 	char *dummy;
 	char *ptr;
 	char *saveptr;
@@ -1173,9 +1148,10 @@ int parse_values (char *buffer, value_list_t *vl, const data_set_t *ds)
 	if ((buffer == NULL) || (vl == NULL) || (ds == NULL))
 		return EINVAL;
 
-	i = -1;
+	i = 0;
 	dummy = buffer;
 	saveptr = NULL;
+	vl->time = 0;
 	while ((ptr = strtok_r (dummy, ":", &saveptr)) != NULL)
 	{
 		dummy = NULL;
@@ -1183,11 +1159,11 @@ int parse_values (char *buffer, value_list_t *vl, const data_set_t *ds)
 		if (i >= vl->values_len)
 		{
 			/* Make sure i is invalid. */
-			i = vl->values_len + 1;
+			i = 0;
 			break;
 		}
 
-		if (i == -1)
+		if (vl->time == 0)
 		{
 			if (strcmp ("N", ptr) == 0)
 				vl->time = cdtime ();
@@ -1206,19 +1182,19 @@ int parse_values (char *buffer, value_list_t *vl, const data_set_t *ds)
 
 				vl->time = DOUBLE_TO_CDTIME_T (tmp);
 			}
+
+			continue;
 		}
-		else
-		{
-			if ((strcmp ("U", ptr) == 0) && (ds->ds[i].type == DS_TYPE_GAUGE))
-				vl->values[i].gauge = NAN;
-			else if (0 != parse_value (ptr, &vl->values[i], ds->ds[i].type))
-				return -1;
-		}
+
+		if ((strcmp ("U", ptr) == 0) && (ds->ds[i].type == DS_TYPE_GAUGE))
+			vl->values[i].gauge = NAN;
+		else if (0 != parse_value (ptr, &vl->values[i], ds->ds[i].type))
+			return -1;
 
 		i++;
 	} /* while (strtok_r) */
 
-	if ((ptr != NULL) || (i != vl->values_len))
+	if ((ptr != NULL) || (i == 0))
 		return (-1);
 	return (0);
 } /* int parse_values */
@@ -1380,10 +1356,9 @@ counter_t counter_diff (counter_t old_value, counter_t new_value)
 	if (old_value > new_value)
 	{
 		if (old_value <= 4294967295U)
-			diff = (4294967295U - old_value) + new_value;
+			diff = (4294967295U - old_value) + new_value + 1;
 		else
-			diff = (18446744073709551615ULL - old_value)
-				+ new_value;
+			diff = (18446744073709551615ULL - old_value) + new_value + 1;
 	}
 	else
 	{
@@ -1488,11 +1463,10 @@ int rate_to_value (value_t *ret_value, gauge_t rate, /* {{{ */
 	return (0);
 } /* }}} value_t rate_to_value */
 
-int value_to_rate (value_t *ret_rate, derive_t value, /* {{{ */
-		value_to_rate_state_t *state,
-		int ds_type, cdtime_t t)
+int value_to_rate (gauge_t *ret_rate, /* {{{ */
+		value_t value, int ds_type, cdtime_t t, value_to_rate_state_t *state)
 {
-	double interval;
+	gauge_t interval;
 
 	/* Another invalid state: The time is not increasing. */
 	if (t <= state->last_time)
@@ -1504,67 +1478,54 @@ int value_to_rate (value_t *ret_rate, derive_t value, /* {{{ */
 	interval = CDTIME_T_TO_DOUBLE(t - state->last_time);
 
 	/* Previous value is invalid. */
-	if (state->last_time == 0) /* {{{ */
+	if (state->last_time == 0)
 	{
-		if (ds_type == DS_TYPE_DERIVE)
-		{
-			state->last_value.derive = value;
-		}
-		else if (ds_type == DS_TYPE_COUNTER)
-		{
-			state->last_value.counter = (counter_t) value;
-		}
-		else if (ds_type == DS_TYPE_ABSOLUTE)
-		{
-			state->last_value.absolute = (absolute_t) value;
-		}
-		else
-		{
-			assert (23 == 42);
-		}
-
+		state->last_value = value;
 		state->last_time = t;
 		return (EAGAIN);
-	} /* }}} */
-
-	if (ds_type == DS_TYPE_DERIVE)
-	{
-		ret_rate->gauge = (value - state->last_value.derive) / interval;
-		state->last_value.derive = value;
-	}
-	else if (ds_type == DS_TYPE_COUNTER)
-	{
-		ret_rate->gauge = (((counter_t)value) - state->last_value.counter) / interval;
-		state->last_value.counter = (counter_t) value;
-	}
-	else if (ds_type == DS_TYPE_ABSOLUTE)
-	{
-		ret_rate->gauge = (((absolute_t)value) - state->last_value.absolute) / interval;
-		state->last_value.absolute = (absolute_t) value;
-	}
-	else
-	{
-		assert (23 == 42);
 	}
 
-        state->last_time = t;
+	switch (ds_type) {
+	case DS_TYPE_DERIVE: {
+		derive_t diff = value.derive - state->last_value.derive;
+		*ret_rate = ((gauge_t) diff) / ((gauge_t) interval);
+		break;
+	}
+	case DS_TYPE_GAUGE: {
+		*ret_rate = value.gauge;
+		break;
+	}
+	case DS_TYPE_COUNTER: {
+		counter_t diff = counter_diff (state->last_value.counter, value.counter);
+		*ret_rate = ((gauge_t) diff) / ((gauge_t) interval);
+		break;
+	}
+	case DS_TYPE_ABSOLUTE: {
+		absolute_t diff = value.absolute;
+		*ret_rate = ((gauge_t) diff) / ((gauge_t) interval);
+		break;
+	}
+	default:
+		return EINVAL;
+	}
+
+	state->last_value = value;
+	state->last_time = t;
 	return (0);
 } /* }}} value_t rate_to_value */
 
 int service_name_to_port_number (const char *service_name)
 {
 	struct addrinfo *ai_list;
-	struct addrinfo *ai_ptr;
-	struct addrinfo ai_hints;
 	int status;
 	int service_number;
 
 	if (service_name == NULL)
 		return (-1);
 
-	ai_list = NULL;
-	memset (&ai_hints, 0, sizeof (ai_hints));
-	ai_hints.ai_family = AF_UNSPEC;
+	struct addrinfo ai_hints = {
+		.ai_family = AF_UNSPEC
+	};
 
 	status = getaddrinfo (/* node = */ NULL, service_name,
 			&ai_hints, &ai_list);
@@ -1576,7 +1537,7 @@ int service_name_to_port_number (const char *service_name)
 	}
 
 	service_number = -1;
-	for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
+	for (struct addrinfo *ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
 	{
 		if (ai_ptr->ai_family == AF_INET)
 		{
@@ -1603,6 +1564,46 @@ int service_name_to_port_number (const char *service_name)
 		return (service_number);
 	return (-1);
 } /* int service_name_to_port_number */
+
+void set_sock_opts (int sockfd) /* {{{ */
+{
+	int status;
+	int socktype;
+
+	socklen_t socklen = sizeof (socklen_t);
+	int so_keepalive = 1;
+
+	status = getsockopt (sockfd, SOL_SOCKET, SO_TYPE, &socktype, &socklen);
+	if (status != 0)
+	{
+		WARNING ("set_sock_opts: failed to determine socket type");
+		return;
+	}
+
+	if (socktype == SOCK_STREAM)
+	{
+		status = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE,
+				&so_keepalive, sizeof (so_keepalive));
+		if (status != 0)
+			WARNING ("set_sock_opts: failed to set socket keepalive flag");
+
+#ifdef TCP_KEEPIDLE
+		int tcp_keepidle = ((CDTIME_T_TO_MS(plugin_get_interval()) - 1) / 100 + 1);
+		status = setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPIDLE,
+				&tcp_keepidle, sizeof (tcp_keepidle));
+		if (status != 0)
+			WARNING ("set_sock_opts: failed to set socket tcp keepalive time");
+#endif
+
+#ifdef TCP_KEEPINTVL
+		int tcp_keepintvl = ((CDTIME_T_TO_MS(plugin_get_interval()) - 1) / 1000 + 1);
+		status = setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPINTVL,
+				&tcp_keepintvl, sizeof (tcp_keepintvl));
+		if (status != 0)
+			WARNING ("set_sock_opts: failed to set socket tcp keepalive interval");
+#endif
+	}
+} /* }}} void set_sock_opts */
 
 int strtoderive (const char *string, derive_t *ret_value) /* {{{ */
 {
@@ -1667,9 +1668,56 @@ int strarray_add (char ***ret_array, size_t *ret_array_len, char const *str) /* 
 
 void strarray_free (char **array, size_t array_len) /* {{{ */
 {
-	size_t i;
-
-	for (i = 0; i < array_len; i++)
+	for (size_t i = 0; i < array_len; i++)
 		sfree (array[i]);
 	sfree (array);
 } /* }}} void strarray_free */
+
+#ifdef HAVE_SYS_CAPABILITY_H
+int check_capability (int capability) /* {{{ */
+{
+#ifdef _LINUX_CAPABILITY_VERSION_3
+	cap_user_header_t cap_header = calloc(1, sizeof (*cap_header));
+	if (cap_header == NULL)
+	{
+		ERROR("check_capability: calloc failed");
+		return (-1);
+	}
+
+	cap_user_data_t cap_data = calloc(1, sizeof (*cap_data));
+	if (cap_data == NULL)
+	{
+		ERROR("check_capability: calloc failed");
+		sfree(cap_header);
+		return (-1);
+	}
+
+	cap_header->pid = getpid();
+	cap_header->version = _LINUX_CAPABILITY_VERSION;
+	if (capget(cap_header, cap_data) < 0)
+	{
+		ERROR("check_capability: capget failed");
+		sfree(cap_header);
+		sfree(cap_data);
+		return (-1);
+	}
+
+	if ((cap_data->effective & (1 << capability)) == 0)
+	{
+		sfree(cap_header);
+		sfree(cap_data);
+		return (-1);
+	}
+	else
+	{
+		sfree(cap_header);
+		sfree(cap_data);
+		return (0);
+	}
+#else
+	WARNING ("check_capability: unsupported capability implementation. "
+	    "Some plugin(s) may require elevated privileges to work properly.");
+	return (0);
+#endif /* _LINUX_CAPABILITY_VERSION_3 */
+} /* }}} int check_capability */
+#endif /* HAVE_SYS_CAPABILITY_H */

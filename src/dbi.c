@@ -25,9 +25,9 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
-#include "configfile.h"
 #include "utils_db_query.h"
 
 #include <dbi/dbi.h>
@@ -63,6 +63,8 @@ struct cdbi_database_s /* {{{ */
 {
   char *name;
   char *select_db;
+
+  cdtime_t interval;
 
   char *driver;
   char *host;
@@ -146,7 +148,7 @@ static int cdbi_result_get_field (dbi_result res, /* {{{ */
   else if (src_type == DBI_TYPE_STRING)
   {
     const char *value;
-    
+
     value = dbi_result_get_string_idx (res, index);
     if (value == NULL)
       sstrncpy (buffer, "", buffer_size);
@@ -176,15 +178,13 @@ static int cdbi_result_get_field (dbi_result res, /* {{{ */
 
 static void cdbi_database_free (cdbi_database_t *db) /* {{{ */
 {
-  size_t i;
-
   if (db == NULL)
     return;
 
   sfree (db->name);
   sfree (db->driver);
 
-  for (i = 0; i < db->driver_options_num; i++)
+  for (size_t i = 0; i < db->driver_options_num; i++)
   {
     sfree (db->driver_options[i].key);
     if (!db->driver_options[i].is_numeric)
@@ -193,7 +193,7 @@ static void cdbi_database_free (cdbi_database_t *db) /* {{{ */
   sfree (db->driver_options);
 
   if (db->q_prep_areas)
-    for (i = 0; i < db->queries_num; ++i)
+    for (size_t i = 0; i < db->queries_num; ++i)
       udb_query_delete_preparation_area (db->q_prep_areas[i]);
   free (db->q_prep_areas);
 
@@ -212,9 +212,10 @@ static void cdbi_database_free (cdbi_database_t *db) /* {{{ */
  *     </Result>
  *     ...
  *   </Query>
- *     
+ *
  *   <Database "plugin_instance1">
  *     Driver "mysql"
+ *     Interval 120
  *     DriverOption "hostname" "localhost"
  *     ...
  *     Query "plugin_instance0"
@@ -237,7 +238,7 @@ static int cdbi_config_add_database_driver_option (cdbi_database_t *db, /* {{{ *
     return (-1);
   }
 
-  option = (cdbi_driver_option_t *) realloc (db->driver_options,
+  option = realloc (db->driver_options,
       sizeof (*option) * (db->driver_options_num + 1));
   if (option == NULL)
   {
@@ -281,7 +282,6 @@ static int cdbi_config_add_database (oconfig_item_t *ci) /* {{{ */
 {
   cdbi_database_t *db;
   int status;
-  int i;
 
   if ((ci->values_num != 1)
       || (ci->values[0].type != OCONFIG_TYPE_STRING))
@@ -291,13 +291,12 @@ static int cdbi_config_add_database (oconfig_item_t *ci) /* {{{ */
     return (-1);
   }
 
-  db = (cdbi_database_t *) malloc (sizeof (*db));
+  db = calloc (1, sizeof (*db));
   if (db == NULL)
   {
-    ERROR ("dbi plugin: malloc failed.");
+    ERROR ("dbi plugin: calloc failed.");
     return (-1);
   }
-  memset (db, 0, sizeof (*db));
 
   status = cf_util_get_string (ci, &db->name);
   if (status != 0)
@@ -307,7 +306,7 @@ static int cdbi_config_add_database (oconfig_item_t *ci) /* {{{ */
   }
 
   /* Fill the `cdbi_database_t' structure.. */
-  for (i = 0; i < ci->children_num; i++)
+  for (int i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *child = ci->children + i;
 
@@ -322,6 +321,8 @@ static int cdbi_config_add_database (oconfig_item_t *ci) /* {{{ */
           &db->queries, &db->queries_num);
     else if (strcasecmp ("Host", child->key) == 0)
       status = cf_util_get_string (child, &db->host);
+    else if (strcasecmp ("Interval", child->key) == 0)
+      status = cf_util_get_cdtime(child, &db->interval);
     else
     {
       WARNING ("dbi plugin: Option `%s' not allowed here.", child->key);
@@ -351,17 +352,15 @@ static int cdbi_config_add_database (oconfig_item_t *ci) /* {{{ */
 
   while ((status == 0) && (db->queries_num > 0))
   {
-    db->q_prep_areas = (udb_query_preparation_area_t **) calloc (
-        db->queries_num, sizeof (*db->q_prep_areas));
-
+    db->q_prep_areas = calloc (db->queries_num, sizeof (*db->q_prep_areas));
     if (db->q_prep_areas == NULL)
     {
-      WARNING ("dbi plugin: malloc failed");
+      WARNING ("dbi plugin: calloc failed");
       status = -1;
       break;
     }
 
-    for (i = 0; i < db->queries_num; ++i)
+    for (size_t i = 0; i < db->queries_num; ++i)
     {
       db->q_prep_areas[i]
         = udb_query_allocate_preparation_area (db->queries[i]);
@@ -382,7 +381,7 @@ static int cdbi_config_add_database (oconfig_item_t *ci) /* {{{ */
   {
     cdbi_database_t **temp;
 
-    temp = (cdbi_database_t **) realloc (databases,
+    temp = realloc (databases,
         sizeof (*databases) * (databases_num + 1));
     if (temp == NULL)
     {
@@ -391,22 +390,22 @@ static int cdbi_config_add_database (oconfig_item_t *ci) /* {{{ */
     }
     else
     {
-      user_data_t ud;
       char *name = NULL;
 
       databases = temp;
       databases[databases_num] = db;
       databases_num++;
 
-      memset (&ud, 0, sizeof (ud));
-      ud.data = (void *) db;
-      ud.free_func = NULL;
       name = ssnprintf_alloc("dbi:%s", db->name);
+
+      user_data_t ud = {
+        .data = db
+      };
 
       plugin_register_complex_read (/* group = */ NULL,
           /* name = */ name ? name : db->name,
           /* callback = */ cdbi_read_database,
-          /* interval = */ NULL,
+          /* interval = */ (db->interval > 0) ? db->interval : 0,
           /* user_data = */ &ud);
       free (name);
     }
@@ -423,9 +422,7 @@ static int cdbi_config_add_database (oconfig_item_t *ci) /* {{{ */
 
 static int cdbi_config (oconfig_item_t *ci) /* {{{ */
 {
-  int i;
-
-  for (i = 0; i < ci->children_num; i++)
+  for (int i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *child = ci->children + i;
     if (strcasecmp ("Query", child->key) == 0)
@@ -494,7 +491,6 @@ static int cdbi_read_database_query (cdbi_database_t *db, /* {{{ */
   char **column_names;
   char **column_values;
   int status;
-  size_t i;
 
   /* Macro that cleans up dynamically allocated memory and returns the
    * specified status. */
@@ -506,7 +502,6 @@ static int cdbi_read_database_query (cdbi_database_t *db, /* {{{ */
 
   column_names = NULL;
   column_values = NULL;
-  res = NULL;
 
   statement = udb_query_get_statement (q);
   assert (statement != NULL);
@@ -542,43 +537,41 @@ static int cdbi_read_database_query (cdbi_database_t *db, /* {{{ */
   }
 
   /* Allocate `column_names' and `column_values'. {{{ */
-  column_names = (char **) calloc (column_num, sizeof (char *));
+  column_names = calloc (column_num, sizeof (*column_names));
   if (column_names == NULL)
   {
-    ERROR ("dbi plugin: malloc failed.");
+    ERROR ("dbi plugin: calloc failed.");
     BAIL_OUT (-1);
   }
 
-  column_names[0] = (char *) calloc (column_num,
-      DATA_MAX_NAME_LEN * sizeof (char));
+  column_names[0] = calloc (column_num, DATA_MAX_NAME_LEN);
   if (column_names[0] == NULL)
   {
-    ERROR ("dbi plugin: malloc failed.");
+    ERROR ("dbi plugin: calloc failed.");
     BAIL_OUT (-1);
   }
-  for (i = 1; i < column_num; i++)
+  for (size_t i = 1; i < column_num; i++)
     column_names[i] = column_names[i - 1] + DATA_MAX_NAME_LEN;
 
-  column_values = (char **) calloc (column_num, sizeof (char *));
+  column_values = calloc (column_num, sizeof (*column_values));
   if (column_values == NULL)
   {
-    ERROR ("dbi plugin: malloc failed.");
+    ERROR ("dbi plugin: calloc failed.");
     BAIL_OUT (-1);
   }
 
-  column_values[0] = (char *) calloc (column_num,
-      DATA_MAX_NAME_LEN * sizeof (char));
+  column_values[0] = calloc (column_num, DATA_MAX_NAME_LEN);
   if (column_values[0] == NULL)
   {
-    ERROR ("dbi plugin: malloc failed.");
+    ERROR ("dbi plugin: calloc failed.");
     BAIL_OUT (-1);
   }
-  for (i = 1; i < column_num; i++)
+  for (size_t i = 1; i < column_num; i++)
     column_values[i] = column_values[i - 1] + DATA_MAX_NAME_LEN;
   /* }}} */
 
   /* Copy the field names to `column_names' */
-  for (i = 0; i < column_num; i++) /* {{{ */
+  for (size_t i = 0; i < column_num; i++) /* {{{ */
   {
     const char *column_name;
 
@@ -596,7 +589,7 @@ static int cdbi_read_database_query (cdbi_database_t *db, /* {{{ */
 
   udb_query_prepare_result (q, prep_area, (db->host ? db->host : hostname_g),
       /* plugin = */ "dbi", db->name,
-      column_names, column_num, /* interval = */ 0);
+      column_names, column_num, /* interval = */ (db->interval > 0) ? db->interval : 0);
 
   /* 0 = error; 1 = success; */
   status = dbi_result_first_row (res); /* {{{ */
@@ -618,7 +611,7 @@ static int cdbi_read_database_query (cdbi_database_t *db, /* {{{ */
   {
     status = 0;
     /* Copy the value of the columns to `column_values' */
-    for (i = 0; i < column_num; i++) /* {{{ */
+    for (size_t i = 0; i < column_num; i++) /* {{{ */
     {
       status = cdbi_result_get_field (res, (unsigned int) (i + 1),
           column_values[i], DATA_MAX_NAME_LEN);
@@ -674,7 +667,6 @@ static int cdbi_connect_database (cdbi_database_t *db) /* {{{ */
 {
   dbi_driver driver;
   dbi_conn connection;
-  size_t i;
   int status;
 
   if (db->connection != NULL)
@@ -716,7 +708,7 @@ static int cdbi_connect_database (cdbi_database_t *db) /* {{{ */
    * encountered, it will get a list of options understood by the driver and
    * report that as `INFO'. This way, users hopefully don't have too much
    * trouble finding out how to configure the plugin correctly.. */
-  for (i = 0; i < db->driver_options_num; i++)
+  for (size_t i = 0; i < db->driver_options_num; i++)
   {
     if (db->driver_options[i].is_numeric)
     {
@@ -749,11 +741,9 @@ static int cdbi_connect_database (cdbi_database_t *db) /* {{{ */
 
     if (status != 0)
     {
-      char const *opt;
-
       INFO ("dbi plugin: This is a list of all options understood "
           "by the `%s' driver:", db->driver);
-      for (opt = dbi_conn_get_option_list (connection, NULL);
+      for (const char *opt = dbi_conn_get_option_list (connection, NULL);
           opt != NULL;
           opt = dbi_conn_get_option_list (connection, opt))
       {
@@ -798,7 +788,6 @@ static int cdbi_connect_database (cdbi_database_t *db) /* {{{ */
 static int cdbi_read_database (user_data_t *ud) /* {{{ */
 {
   cdbi_database_t *db = (cdbi_database_t *) ud->data;
-  size_t i;
   int success;
   int status;
 
@@ -813,7 +802,7 @@ static int cdbi_read_database (user_data_t *ud) /* {{{ */
   /* TODO: Complain if `db_version == 0' */
 
   success = 0;
-  for (i = 0; i < db->queries_num; i++)
+  for (size_t i = 0; i < db->queries_num; i++)
   {
     /* Check if we know the database's version and if so, if this query applies
      * to that version. */
@@ -838,9 +827,7 @@ static int cdbi_read_database (user_data_t *ud) /* {{{ */
 
 static int cdbi_shutdown (void) /* {{{ */
 {
-  size_t i;
-
-  for (i = 0; i < databases_num; i++)
+  for (size_t i = 0; i < databases_num; i++)
   {
     if (databases[i]->connection != NULL)
     {

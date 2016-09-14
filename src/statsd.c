@@ -25,17 +25,13 @@
  */
 
 #include "collectd.h"
+
 #include "plugin.h"
 #include "common.h"
-#include "configfile.h"
 #include "utils_avltree.h"
-#include "utils_complain.h"
 #include "utils_latency.h"
 
-#include <pthread.h>
-
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <netdb.h>
 #include <poll.h>
 
@@ -65,6 +61,7 @@ struct statsd_metric_s
 {
   metric_type_t type;
   double value;
+  derive_t counter;
   latency_counter_t *latency;
   c_avl_tree_t *set;
   unsigned long updates_num;
@@ -89,6 +86,7 @@ static _Bool conf_delete_sets     = 0;
 static double *conf_timer_percentile = NULL;
 static size_t  conf_timer_percentile_num = 0;
 
+static _Bool conf_counter_sum     = 0;
 static _Bool conf_timer_lower     = 0;
 static _Bool conf_timer_upper     = 0;
 static _Bool conf_timer_sum       = 0;
@@ -126,14 +124,13 @@ static statsd_metric_t *statsd_metric_lookup_unsafe (char const *name, /* {{{ */
     return (NULL);
   }
 
-  metric = malloc (sizeof (*metric));
+  metric = calloc (1, sizeof (*metric));
   if (metric == NULL)
   {
-    ERROR ("statsd plugin: malloc failed.");
+    ERROR ("statsd plugin: calloc failed.");
     sfree (key_copy);
     return (NULL);
   }
-  memset (metric, 0, sizeof (*metric));
 
   metric->type = type;
   metric->latency = NULL;
@@ -262,6 +259,8 @@ static int statsd_handle_counter (char const *name, /* {{{ */
   if (status != 0)
     return (status);
 
+  /* Changes to the counter are added to (statsd_metric_t*)->value. ->counter is
+   * only updated in statsd_metric_submit_unsafe(). */
   return (statsd_metric_add (name, (double) (value.gauge / scale.gauge),
         STATSD_COUNTER));
 } /* }}} int statsd_handle_counter */
@@ -356,7 +355,7 @@ static int statsd_handle_set (char const *name, /* {{{ */
 
   /* Make sure metric->set exists. */
   if (metric->set == NULL)
-    metric->set = c_avl_create ((void *) strcmp);
+    metric->set = c_avl_create ((int (*) (const void *, const void *)) strcmp);
 
   if (metric->set == NULL)
   {
@@ -501,22 +500,18 @@ static int statsd_network_init (struct pollfd **ret_fds, /* {{{ */
   struct pollfd *fds = NULL;
   size_t fds_num = 0;
 
-  struct addrinfo ai_hints;
-  struct addrinfo *ai_list = NULL;
-  struct addrinfo *ai_ptr;
+  struct addrinfo *ai_list;
   int status;
 
   char const *node = (conf_node != NULL) ? conf_node : STATSD_DEFAULT_NODE;
   char const *service = (conf_service != NULL)
     ? conf_service : STATSD_DEFAULT_SERVICE;
 
-  memset (&ai_hints, 0, sizeof (ai_hints));
-  ai_hints.ai_flags = AI_PASSIVE;
-#ifdef AI_ADDRCONFIG
-  ai_hints.ai_flags |= AI_ADDRCONFIG;
-#endif
-  ai_hints.ai_family = AF_UNSPEC;
-  ai_hints.ai_socktype = SOCK_DGRAM;
+  struct addrinfo ai_hints = {
+    .ai_family = AF_UNSPEC,
+    .ai_flags = AI_PASSIVE | AI_ADDRCONFIG,
+    .ai_socktype = SOCK_DGRAM
+  };
 
   status = getaddrinfo (node, service, &ai_hints, &ai_list);
   if (status != 0)
@@ -526,7 +521,7 @@ static int statsd_network_init (struct pollfd **ret_fds, /* {{{ */
     return (status);
   }
 
-  for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
+  for (struct addrinfo *ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
   {
     int fd;
     struct pollfd *tmp;
@@ -593,7 +588,6 @@ static void *statsd_network_thread (void *args) /* {{{ */
   struct pollfd *fds = NULL;
   size_t fds_num = 0;
   int status;
-  size_t i;
 
   status = statsd_network_init (&fds, &fds_num);
   if (status != 0)
@@ -617,7 +611,7 @@ static void *statsd_network_thread (void *args) /* {{{ */
       break;
     }
 
-    for (i = 0; i < fds_num; i++)
+    for (size_t i = 0; i < fds_num; i++)
     {
       if ((fds[i].revents & (POLLIN | POLLPRI)) == 0)
         continue;
@@ -628,7 +622,7 @@ static void *statsd_network_thread (void *args) /* {{{ */
   } /* while (!network_thread_shutdown) */
 
   /* Clean up */
-  for (i = 0; i < fds_num; i++)
+  for (size_t i = 0; i < fds_num; i++)
     close (fds[i].fd);
   sfree (fds);
 
@@ -668,9 +662,7 @@ static int statsd_config_timer_percentile (oconfig_item_t *ci) /* {{{ */
 
 static int statsd_config (oconfig_item_t *ci) /* {{{ */
 {
-  int i;
-
-  for (i = 0; i < ci->children_num; i++)
+  for (int i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *child = ci->children + i;
 
@@ -686,6 +678,8 @@ static int statsd_config (oconfig_item_t *ci) /* {{{ */
       cf_util_get_boolean (child, &conf_delete_gauges);
     else if (strcasecmp ("DeleteSets", child->key) == 0)
       cf_util_get_boolean (child, &conf_delete_sets);
+    else if (strcasecmp ("CounterSum", child->key) == 0)
+      cf_util_get_boolean (child, &conf_counter_sum);
     else if (strcasecmp ("TimerLower", child->key) == 0)
       cf_util_get_boolean (child, &conf_timer_lower);
     else if (strcasecmp ("TimerUpper", child->key) == 0)
@@ -708,7 +702,7 @@ static int statsd_init (void) /* {{{ */
 {
   pthread_mutex_lock (&metrics_lock);
   if (metrics_tree == NULL)
-    metrics_tree = c_avl_create ((void *) strcmp);
+    metrics_tree = c_avl_create ((int (*) (const void *, const void *)) strcmp);
 
   if (!network_thread_running)
   {
@@ -756,8 +750,7 @@ static int statsd_metric_clear_set_unsafe (statsd_metric_t *metric) /* {{{ */
 } /* }}} int statsd_metric_clear_set_unsafe */
 
 /* Must hold metrics_lock when calling this function. */
-static int statsd_metric_submit_unsafe (char const *name, /* {{{ */
-    statsd_metric_t const *metric)
+static int statsd_metric_submit_unsafe (char const *name, statsd_metric_t *metric) /* {{{ */
 {
   value_t values[1];
   value_list_t vl = VALUE_LIST_INIT;
@@ -782,7 +775,6 @@ static int statsd_metric_submit_unsafe (char const *name, /* {{{ */
     values[0].gauge = (gauge_t) metric->value;
   else if (metric->type == STATSD_TIMER)
   {
-    size_t i;
     _Bool have_events = (metric->updates_num > 0);
 
     /* Make sure all timer metrics share the *same* timestamp. */
@@ -822,7 +814,7 @@ static int statsd_metric_submit_unsafe (char const *name, /* {{{ */
       plugin_dispatch_values (&vl);
     }
 
-    for (i = 0; i < conf_timer_percentile_num; i++)
+    for (size_t i = 0; i < conf_timer_percentile_num; i++)
     {
       ssnprintf (vl.type_instance, sizeof (vl.type_instance),
           "%s-percentile-%.0f", name, conf_timer_percentile[i]);
@@ -853,17 +845,28 @@ static int statsd_metric_submit_unsafe (char const *name, /* {{{ */
       values[0].gauge = (gauge_t) c_avl_size (metric->set);
   }
   else { /* STATSD_COUNTER */
-      /*
-       * Expand a single value to two metrics:
-       *
-       * - The absolute counter, as a gauge
-       * - A derived rate for this counter
-       */
-      values[0].derive = (derive_t) metric->value;
-      plugin_dispatch_values(&vl);
+    gauge_t delta = nearbyint (metric->value);
 
-      sstrncpy(vl.type, "gauge", sizeof (vl.type));
-      values[0].gauge = (gauge_t) metric->value;
+    /* Etsy's statsd writes counters as two metrics: a rate and the change since
+     * the last write. Since collectd does not reset its DERIVE metrics to zero,
+     * this makes little sense, but we're dispatching a "count" metric here
+     * anyway - if requested by the user - for compatibility reasons. */
+    if (conf_counter_sum)
+    {
+      sstrncpy (vl.type, "count", sizeof (vl.type));
+      values[0].gauge = delta;
+      plugin_dispatch_values (&vl);
+
+      /* restore vl.type */
+      sstrncpy (vl.type, "derive", sizeof (vl.type));
+    }
+
+    /* Rather than resetting value to zero, subtract delta so we correctly keep
+     * track of residuals. */
+    metric->value   -= delta;
+    metric->counter += (derive_t) delta;
+
+    values[0].derive = metric->counter;
   }
 
   return (plugin_dispatch_values (&vl));
@@ -877,7 +880,6 @@ static int statsd_read (void) /* {{{ */
 
   char **to_be_deleted = NULL;
   size_t to_be_deleted_num = 0;
-  size_t i;
 
   pthread_mutex_lock (&metrics_lock);
 
@@ -912,7 +914,7 @@ static int statsd_read (void) /* {{{ */
   }
   c_avl_iterator_destroy (iter);
 
-  for (i = 0; i < to_be_deleted_num; i++)
+  for (size_t i = 0; i < to_be_deleted_num; i++)
   {
     int status;
 

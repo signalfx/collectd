@@ -1,6 +1,6 @@
  collectd - System information collection daemon
 =================================================
-http://collectd.org/
+https://collectd.org/
 
 About
 -----
@@ -51,6 +51,9 @@ Features
     - cgroups
       CPU accounting information for process groups under Linux.
 
+    - chrony
+      Chrony daemon statistics: Local clock drift, offset to peers, etc.
+
     - conntrack
       Number of nf_conntrack entries.
 
@@ -63,6 +66,9 @@ Features
 
     - cpufreq
       CPU frequency (For laptops with speed step or a similar technology)
+
+    - cpusleep
+      CPU sleep: Time spent in suspend (For mobile devices which enter suspend automatically)
 
     - curl
       Parse statistics from websites using regular expressions.
@@ -119,6 +125,12 @@ Features
     - gmond
       Receive multicast traffic from Ganglia instances.
 
+    - gps
+      Monitor gps related data through gpsd.
+
+    - grpc
+      Receive values over the network using the gRPC framework.
+
     - hddtemp
       Hard disk temperatures using hddtempd.
 
@@ -156,6 +168,12 @@ Features
       Detailed CPU statistics of the “Logical Partitions” virtualization
       technique built into IBM's POWER processors.
 
+    - lua
+      The Lua plugin implements a Lua interpreter into collectd. This
+      makes it possible to write plugins in Lua which are executed by
+      collectd without the need to start a heavy interpreter every interval.
+      See collectd-lua(5) for details.
+
     - lvm
       Size of “Logical Volumes” (LV) and “Volume Groups” (VG) of Linux'
       “Logical Volume Manager” (LVM).
@@ -190,6 +208,9 @@ Features
     - modbus
       Reads values from Modbus/TCP enabled devices. Supports reading values
       from multiple "slaves" so gateway devices can be used.
+
+    - mqtt
+      Publishes and subscribes to MQTT topics.
 
     - multimeter
       Information provided by serial multimeters, such as the `Metex
@@ -379,11 +400,18 @@ Features
     - wireless
       Link quality of wireless cards. Linux only.
 
+    - xencpu
+      XEN Hypervisor CPU stats.
+
     - xmms
       Bitrate and frequency of music played with XMMS.
 
     - zfs_arc
       Statistics for ZFS' “Adaptive Replacement Cache” (ARC).
+
+    - zone
+      Measures the percentage of cpu load per container (zone) under Solaris 10
+      and higher
 
     - zookeeper
       Read data from Zookeeper's MNTR command.
@@ -399,6 +427,10 @@ Features
       Write to comma separated values (CSV) files. This needs lots of
       diskspace but is extremely portable and can be analysed with almost
       every program that can analyse anything. Even Microsoft's Excel..
+
+    - lua
+      It's possible to implement write plugins in Lua using the Lua
+      plugin. See collectd-lua(5) for details.
 
     - network
       Send the data to a remote host to save the data somehow. This is useful
@@ -494,6 +526,9 @@ Features
     - notify_email
       Send an E-mail with the notification message to the configured
       recipients.
+
+    - notify_nagios
+      Submit notifications as passive check results to a local nagios instance.
 
     - exec
       Execute a program or script to handle the notification.
@@ -669,9 +704,18 @@ Prerequisites
     Used by the `gmond' plugin to process data received from Ganglia.
     <http://ganglia.info/>
 
+  * libgrpc (optional)
+    Used by the `grpc' plugin. gRPC requires a C++ compiler supporting the
+    C++11 standard.
+    <https://grpc.io/>
+
   * libgcrypt (optional)
     Used by the `network' plugin for encryption and authentication.
     <http://www.gnupg.org/>
+
+  * libgps (optional)
+    Used by the `gps' plugin.
+    <http://developer.berlios.de/projects/gpsd/>
 
   * libhal (optional)
     If present, the `uuid' plugin will check for UUID from HAL.
@@ -694,6 +738,10 @@ Prerequisites
   * libldap (optional)
     Used by the `openldap' plugin.
     <http://www.openldap.org/>
+
+  * liblua (optional)
+    Used by the `lua' plugin. Currently, Lua 5.1 and later are supported.
+    <https://www.lua.org/>
 
   * liblvm2 (optional)
     Used by the `lvm' plugin.
@@ -758,14 +806,18 @@ Prerequisites
     The PostgreSQL C client library used by the `postgresql' plugin.
     <http://www.postgresql.org/>
 
+  * libprotobuf, protoc 3.0+ (optional)
+    Used by the `grpc' plugin to generate service stubs and code to handle
+    network packets of collectd's protobuf-based network protocol.
+    <https://developers.google.com/protocol-buffers/>
+
   * libprotobuf-c, protoc-c (optional)
     Used by the `pinba' plugin to generate a parser for the network packets
-    sent by the Pinba PHP extension, and by the `write_riemann' plugin to
-    generate events to be sent to a Riemann server.
+    sent by the Pinba PHP extension.
     <http://code.google.com/p/protobuf-c/>
 
   * libpython (optional)
-    Used by the `python' plugin. Currently, Python 2.3 and later and Python 3
+    Used by the `python' plugin. Currently, Python 2.6 and later and Python 3
     are supported.
     <http://www.python.org/>
 
@@ -823,6 +875,10 @@ Prerequisites
     `virt' plugins.
     <http://xmlsoft.org/>
 
+  * libxen (optional)
+    Used by the `xencpu' plugin.
+    <http://xenbits.xensource.com/>
+
   * libxmms (optional)
     <http://www.xmms.org/>
 
@@ -835,6 +891,10 @@ Prerequisites
      Fetches statistics from a Varnish instance. This is needed for the
      `varnish' plugin.
      <http://varnish-cache.org>
+
+  * riemann-c-client (optional)
+     For the `write_riemann' plugin.
+     <https://github.com/algernon/riemann-c-client>
 
 Configuring / Compiling / Installing
 ------------------------------------
@@ -889,18 +949,19 @@ Configuring with libjvm
   library checks succeed.
 
   If this doesn't work for you, you have the possibility to specify CPP-flags,
-  C-flags and LD-flags for the ‘Java’ plugin by hand, using the following three
-  (environment) variables:
+  C-flags, LD-flags and LIBS for the ‘Java’ plugin by hand, using the
+  following environment variables:
 
     - JAVA_CPPFLAGS
     - JAVA_CFLAGS
     - JAVA_LDFLAGS
+    - JAVA_LIBS
 
   For example (shortened for demonstration purposes):
 
     ./configure JAVA_CPPFLAGS="-I$JAVA_HOME/include -I$JAVA_HOME/include/linux"
 
-  Adding "-ljvm" to the JAVA_LDFLAGS is done automatically, you don't have to
+  Adding "-ljvm" to JAVA_LIBS is done automatically, you don't have to
   do that.
 
 Generating the configure script
@@ -917,6 +978,7 @@ To generate the `configure` script, you'll need the following dependencies:
 - bison
 - libtool
 - libtool-ltdl
+- pkg-config
 
 The `build.sh' script takes no arguments.
 
@@ -969,6 +1031,5 @@ Author
   Sebastian tokkee Harl <sh at tokkee.org>,
   and many contributors (see `AUTHORS').
 
-  Please send bug reports and patches to the mailing list, see `Contact'
-  above.
-
+  Please use GitHub reporting bugs and submitting pull requests.
+  See CONTRIBUTING.md for details.

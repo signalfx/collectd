@@ -22,13 +22,13 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <netdb.h>
 
 /*
@@ -84,13 +84,12 @@ static int tss2_add_vserver (int vserver_port)
 	}
 
 	/* Allocate memory */
-	entry = (vserver_list_t *) malloc (sizeof (vserver_list_t));
+	entry = calloc (1, sizeof (*entry));
 	if (entry == NULL)
 	{
-		ERROR ("teamspeak2 plugin: malloc failed.");
+		ERROR ("teamspeak2 plugin: calloc failed.");
 		return (-1);
 	}
-	memset (entry, 0, sizeof (vserver_list_t));
 
 	/* Save data */
 	entry->port = vserver_port;
@@ -141,7 +140,7 @@ static void tss2_submit_gauge (const char *plugin_instance,
 	if (type_instance != NULL)
 		sstrncpy (vl.type_instance, type_instance,
 				sizeof (vl.type_instance));
-	
+
 	plugin_dispatch_values (&vl);
 } /* void tss2_submit_gauge */
 
@@ -200,9 +199,7 @@ static int tss2_get_socket (FILE **ret_read_fh, FILE **ret_write_fh)
 	 * Returns connected file objects or establishes the connection
 	 * if it's not already present
 	 */
-	struct addrinfo ai_hints;
 	struct addrinfo *ai_head;
-	struct addrinfo *ai_ptr;
 	int sd = -1;
 	int status;
 
@@ -218,12 +215,11 @@ static int tss2_get_socket (FILE **ret_read_fh, FILE **ret_write_fh)
 	}
 
 	/* Get all addrs for this hostname */
-	memset (&ai_hints, 0, sizeof (ai_hints));
-#ifdef AI_ADDRCONFIG
-	ai_hints.ai_flags |= AI_ADDRCONFIG;
-#endif
-	ai_hints.ai_family = AF_UNSPEC;
-	ai_hints.ai_socktype = SOCK_STREAM;
+	struct addrinfo ai_hints = {
+		.ai_family = AF_UNSPEC,
+		.ai_flags = AI_ADDRCONFIG,
+		.ai_socktype = SOCK_STREAM
+	};
 
 	status = getaddrinfo ((config_host != NULL) ? config_host : DEFAULT_HOST,
 			(config_port != NULL) ? config_port : DEFAULT_PORT,
@@ -237,7 +233,7 @@ static int tss2_get_socket (FILE **ret_read_fh, FILE **ret_write_fh)
 	}
 
 	/* Try all given hosts until we can connect to one */
-	for (ai_ptr = ai_head; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
+	for (struct addrinfo *ai_ptr = ai_head; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
 	{
 		/* Create socket */
 		sd = socket (ai_ptr->ai_family, ai_ptr->ai_socktype,
@@ -353,7 +349,7 @@ static int tss2_receive_line (FILE *fh, char *buffer, int buffer_size)
 	 * Receive a single line from the given file object
 	 */
 	char *temp;
-	 
+
 	/*
 	 * fgets is blocking but much easier then doing anything else
 	 * TODO: Non-blocking Version would be safer
@@ -436,7 +432,7 @@ static int tss2_vserver_gapl (FILE *read_fh, FILE *write_fh,
 		char buffer[4096];
 		char *value;
 		char *endptr = NULL;
-		
+
 		status = tss2_receive_line (read_fh, buffer, sizeof (buffer));
 		if (status != 0)
 		{
@@ -447,7 +443,7 @@ static int tss2_vserver_gapl (FILE *read_fh, FILE *write_fh,
 			return (-1);
 		}
 		buffer[sizeof (buffer) - 1] = 0;
-		
+
 		if (strncmp ("average_packet_loss=", buffer,
 					strlen ("average_packet_loss=")) == 0)
 		{
@@ -463,9 +459,9 @@ static int tss2_vserver_gapl (FILE *read_fh, FILE *write_fh,
 				}
 				value++;
 			}
-			
+
 			value = &buffer[20];
-			
+
 			packet_loss = strtod (value, &endptr);
 			if (value == endptr)
 			{
@@ -490,7 +486,7 @@ static int tss2_vserver_gapl (FILE *read_fh, FILE *write_fh,
 					buffer);
 		}
 	}
-	
+
 	*ret_value = packet_loss;
 	return (0);
 } /* int tss2_vserver_gapl */
@@ -513,7 +509,7 @@ static int tss2_read_vserver (vserver_list_t *vserver)
 	gauge_t packet_loss = NAN;
 	int valid = 0;
 
-	char plugin_instance[DATA_MAX_NAME_LEN];
+	char plugin_instance[DATA_MAX_NAME_LEN] = { 0 };
 
 	FILE *read_fh;
 	FILE *write_fh;
@@ -529,8 +525,6 @@ static int tss2_read_vserver (vserver_list_t *vserver)
 	if (vserver == NULL)
 	{
 		/* Request global information */
-		memset (plugin_instance, 0, sizeof (plugin_instance));
-
 		status = tss2_send_request (write_fh, "gi\r\n");
 	}
 	else
@@ -560,7 +554,7 @@ static int tss2_read_vserver (vserver_list_t *vserver)
 		char *key;
 		char *value;
 		char *endptr = NULL;
-		
+
 		/* Read one line of the server's answer */
 		status = tss2_receive_line (read_fh, buffer, sizeof (buffer));
 		if (status != 0)
@@ -725,7 +719,7 @@ static int tss2_config (const char *key, const char *value)
 	/*
 	 * Interpret configuration values
 	 */
-    if (strcasecmp ("Host", key) == 0)
+	if (strcasecmp ("Host", key) == 0)
 	{
 		char *temp;
 
@@ -755,7 +749,7 @@ static int tss2_config (const char *key, const char *value)
 	{
 		/* Server variable found */
 		int status;
-		
+
 		status = tss2_add_vserver (atoi (value));
 		if (status != 0)
 			return (1);
@@ -775,7 +769,6 @@ static int tss2_read (void)
 	 * Poll function which collects global and vserver information
 	 * and submits it to collectd
 	 */
-	vserver_list_t *vserver;
 	int success = 0;
 	int status;
 
@@ -791,7 +784,7 @@ static int tss2_read (void)
 	}
 
 	/* Handle vservers */
-	for (vserver = server_list; vserver != NULL; vserver = vserver->next)
+	for (vserver_list_t *vserver = server_list; vserver != NULL; vserver = vserver->next)
 	{
 		status = tss2_read_vserver (vserver);
 		if (status == 0)
@@ -805,10 +798,10 @@ static int tss2_read (void)
 			continue;
 		}
 	}
-	
+
 	if (success == 0)
 		return (-1);
-    return (0);
+	return (0);
 } /* int tss2_read */
 
 static int tss2_shutdown(void)
@@ -834,7 +827,7 @@ static int tss2_shutdown(void)
 	/* Get rid of the configuration */
 	sfree (config_host);
 	sfree (config_port);
-	
+
     return (0);
 } /* int tss2_shutdown */
 

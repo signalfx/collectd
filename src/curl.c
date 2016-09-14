@@ -22,9 +22,10 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
-#include "configfile.h"
+#include "utils_curl_stats.h"
 #include "utils_match.h"
 #include "utils_time.h"
 
@@ -67,6 +68,7 @@ struct web_page_s /* {{{ */
   _Bool response_time;
   _Bool response_code;
   int timeout;
+  curl_stats_t *stats;
 
   CURL *curl;
   char curl_errbuf[CURL_ERROR_SIZE];
@@ -95,7 +97,7 @@ static size_t cc_curl_callback (void *buf, /* {{{ */
   size_t len;
 
   len = size * nmemb;
-  if (len <= 0)
+  if (len == 0)
     return (len);
 
   wp = user_data;
@@ -108,7 +110,7 @@ static size_t cc_curl_callback (void *buf, /* {{{ */
     size_t temp_size;
 
     temp_size = wp->buffer_fill + len + 1;
-    temp = (char *) realloc (wp->buffer, temp_size);
+    temp = realloc (wp->buffer, temp_size);
     if (temp == NULL)
     {
       ERROR ("curl plugin: realloc failed.");
@@ -156,6 +158,7 @@ static void cc_web_page_free (web_page_t *wp) /* {{{ */
   sfree (wp->cacert);
   sfree (wp->post_body);
   curl_slist_free_all (wp->headers);
+  curl_stats_destroy (wp->stats);
 
   sfree (wp->buffer);
 
@@ -266,23 +269,21 @@ static int cc_config_add_match (web_page_t *page, /* {{{ */
 {
   web_match_t *match;
   int status;
-  int i;
 
   if (ci->values_num != 0)
   {
     WARNING ("curl plugin: Ignoring arguments for the `Match' block.");
   }
 
-  match = (web_match_t *) malloc (sizeof (*match));
+  match = calloc (1, sizeof (*match));
   if (match == NULL)
   {
-    ERROR ("curl plugin: malloc failed.");
+    ERROR ("curl plugin: calloc failed.");
     return (-1);
   }
-  memset (match, 0, sizeof (*match));
 
   status = 0;
-  for (i = 0; i < ci->children_num; i++)
+  for (int i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *child = ci->children + i;
 
@@ -339,7 +340,7 @@ static int cc_config_add_match (web_page_t *page, /* {{{ */
       match->dstype);
   if (match->match == NULL)
   {
-    ERROR ("curl plugin: tail_match_add_match_simple failed.");
+    ERROR ("curl plugin: match_create_simple failed.");
     cc_web_match_free (match);
     return (-1);
   }
@@ -391,7 +392,7 @@ static int cc_page_init_curl (web_page_t *wp) /* {{{ */
     if (wp->pass != NULL)
       credentials_size += strlen (wp->pass);
 
-    wp->credentials = (char *) malloc (credentials_size);
+    wp->credentials = malloc (credentials_size);
     if (wp->credentials == NULL)
     {
       ERROR ("curl plugin: malloc failed.");
@@ -421,8 +422,7 @@ static int cc_page_init_curl (web_page_t *wp) /* {{{ */
   if (wp->timeout >= 0)
     curl_easy_setopt (wp->curl, CURLOPT_TIMEOUT_MS, (long) wp->timeout);
   else
-    curl_easy_setopt (wp->curl, CURLOPT_TIMEOUT_MS,
-       CDTIME_T_TO_MS(plugin_get_interval()));
+    curl_easy_setopt (wp->curl, CURLOPT_TIMEOUT_MS, (long) CDTIME_T_TO_MS(plugin_get_interval()));
 #endif
 
   return (0);
@@ -432,7 +432,6 @@ static int cc_config_add_page (oconfig_item_t *ci) /* {{{ */
 {
   web_page_t *page;
   int status;
-  int i;
 
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING))
   {
@@ -440,13 +439,12 @@ static int cc_config_add_page (oconfig_item_t *ci) /* {{{ */
     return (-1);
   }
 
-  page = (web_page_t *) malloc (sizeof (*page));
+  page = calloc (1, sizeof (*page));
   if (page == NULL)
   {
-    ERROR ("curl plugin: malloc failed.");
+    ERROR ("curl plugin: calloc failed.");
     return (-1);
   }
-  memset (page, 0, sizeof (*page));
   page->url = NULL;
   page->user = NULL;
   page->pass = NULL;
@@ -456,6 +454,7 @@ static int cc_config_add_page (oconfig_item_t *ci) /* {{{ */
   page->response_time = 0;
   page->response_code = 0;
   page->timeout = -1;
+  page->stats = NULL;
 
   page->instance = strdup (ci->values[0].value.string);
   if (page->instance == NULL)
@@ -467,7 +466,7 @@ static int cc_config_add_page (oconfig_item_t *ci) /* {{{ */
 
   /* Process all children */
   status = 0;
-  for (i = 0; i < ci->children_num; i++)
+  for (int i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *child = ci->children + i;
 
@@ -498,6 +497,11 @@ static int cc_config_add_page (oconfig_item_t *ci) /* {{{ */
       status = cf_util_get_string (child, &page->post_body);
     else if (strcasecmp ("Timeout", child->key) == 0)
       status = cf_util_get_int (child, &page->timeout);
+    else if (strcasecmp ("Statistics", child->key) == 0) {
+      page->stats = curl_stats_from_config (child);
+      if (page->stats == NULL)
+        status = -1;
+    }
     else
     {
       WARNING ("curl plugin: Option `%s' not allowed here.", child->key);
@@ -517,12 +521,13 @@ static int cc_config_add_page (oconfig_item_t *ci) /* {{{ */
       status = -1;
     }
 
-    if (page->matches == NULL && !page->response_time && !page->response_code)
+    if (page->matches == NULL && page->stats == NULL
+        && !page->response_time && !page->response_code)
     {
       assert (page->instance != NULL);
       WARNING ("curl plugin: No (valid) `Match' block "
-          "or MeasureResponseTime or MeasureResponseCode within "
-          "`Page' block `%s'.", page->instance);
+          "or Statistics or MeasureResponseTime or MeasureResponseCode "
+          "within `Page' block `%s'.", page->instance);
       status = -1;
     }
 
@@ -546,7 +551,7 @@ static int cc_config_add_page (oconfig_item_t *ci) /* {{{ */
     web_page_t *prev;
 
     prev = pages_g;
-    while ((prev != NULL) && (prev->next != NULL))
+    while (prev->next != NULL)
       prev = prev->next;
     prev->next = page;
   }
@@ -559,12 +564,11 @@ static int cc_config (oconfig_item_t *ci) /* {{{ */
   int success;
   int errors;
   int status;
-  int i;
 
   success = 0;
   errors = 0;
 
-  for (i = 0; i < ci->children_num; i++)
+  for (int i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *child = ci->children + i;
 
@@ -660,7 +664,6 @@ static void cc_submit_response_time (const web_page_t *wp, /* {{{ */
 
 static int cc_read_page (web_page_t *wp) /* {{{ */
 {
-  web_match_t *wm;
   int status;
   cdtime_t start = 0;
 
@@ -678,6 +681,8 @@ static int cc_read_page (web_page_t *wp) /* {{{ */
 
   if (wp->response_time)
     cc_submit_response_time (wp, cdtime() - start);
+  if (wp->stats != NULL)
+    curl_stats_dispatch (wp->stats, wp->curl, hostname_g, "curl", wp->instance);
 
   if(wp->response_code)
   {
@@ -691,7 +696,7 @@ static int cc_read_page (web_page_t *wp) /* {{{ */
     }
   }
 
-  for (wm = wp->matches; wm != NULL; wm = wm->next)
+  for (web_match_t *wm = wp->matches; wm != NULL; wm = wm->next)
   {
     cu_match_value_t *mv;
 
@@ -718,9 +723,7 @@ static int cc_read_page (web_page_t *wp) /* {{{ */
 
 static int cc_read (void) /* {{{ */
 {
-  web_page_t *wp;
-
-  for (wp = pages_g; wp != NULL; wp = wp->next)
+  for (web_page_t *wp = pages_g; wp != NULL; wp = wp->next)
     cc_read_page (wp);
 
   return (0);

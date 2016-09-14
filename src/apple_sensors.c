@@ -25,6 +25,7 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
 
@@ -59,7 +60,7 @@ static mach_port_t io_master_port = MACH_PORT_NULL;
 static int as_init (void)
 {
 	kern_return_t status;
-	
+
 	if (io_master_port != MACH_PORT_NULL)
 	{
 		mach_port_deallocate (mach_task_self (),
@@ -113,8 +114,6 @@ static int as_read (void)
 	char   inst[128];
 	int    value_int;
 	double value_double;
-	int    i;
-
 	if (!io_master_port || (io_master_port == MACH_PORT_NULL))
 		return (-1);
 
@@ -169,7 +168,7 @@ static int as_read (void)
 					kCFStringEncodingASCII))
 			continue;
 		inst[sizeof (inst) - 1] = '\0';
-		for (i = 0; i < 128; i++)
+		for (int i = 0; i < 128; i++)
 		{
 			if (inst[i] == '\0')
 				break;

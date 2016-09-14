@@ -28,18 +28,15 @@
 #define _BSD_SOURCE /* For NI_MAXHOST */
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
-#include "configfile.h"
 
 #if HAVE_STDINT_H
 # include <stdint.h>
 #endif
 #if HAVE_NETDB_H
 # include <netdb.h>
-#endif
-#if HAVE_SYS_SOCKET_H
-# include <sys/socket.h>
 #endif
 #if HAVE_NETINET_IN_H
 # include <netinet/in.h>
@@ -52,6 +49,10 @@
 #endif
 #if HAVE_POLL_H
 # include <poll.h>
+#endif
+
+#ifndef STA_NANO
+# define STA_NANO 0x2000
 #endif
 
 static const char *config_keys[] =
@@ -250,7 +251,7 @@ struct info_kernel
 };
 
 /* List of reference clock names */
-static char *refclock_names[] =
+static const char *refclock_names[] =
 {
 	"UNKNOWN",    "LOCAL",        "GPS_TRAK",   "WWV_PST",     /*  0- 3 */
 	"SPECTRACOM", "TRUETIME",     "IRIG_AUDIO", "CHU_AUDIO",   /*  4- 7 */
@@ -265,7 +266,7 @@ static char *refclock_names[] =
 	"JJY",        "TT_IRIG",      "GPS_ZYFER",  "GPS_RIPENCC", /* 40-43 */
 	"NEOCLK4X"                                                 /* 44    */
 };
-static int refclock_names_num = STATIC_ARRAY_SIZE (refclock_names);
+static size_t refclock_names_num = STATIC_ARRAY_SIZE (refclock_names);
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * End of the copied stuff..                                         *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
@@ -310,7 +311,7 @@ static int ntpd_config (const char *key, const char *value)
 	return (0);
 }
 
-static void ntpd_submit (char *type, char *type_inst, gauge_t value)
+static void ntpd_submit (const char *type, const char *type_inst, gauge_t value)
 {
 	value_t values[1];
 	value_list_t vl = VALUE_LIST_INIT;
@@ -331,8 +332,8 @@ static void ntpd_submit (char *type, char *type_inst, gauge_t value)
 /* Each time a peer is polled, ntpd shifts the reach register to the left and
  * sets the LSB based on whether the peer was reachable. If the LSB is zero,
  * the values are out of date. */
-static void ntpd_submit_reach (char *type, char *type_inst, uint8_t reach,
-		gauge_t value)
+static void ntpd_submit_reach (const char *type, const char *type_inst,
+		uint8_t reach, gauge_t value)
 {
 	if (!(reach & 1))
 		value = NAN;
@@ -342,12 +343,10 @@ static void ntpd_submit_reach (char *type, char *type_inst, uint8_t reach,
 
 static int ntpd_connect (void)
 {
-	char *host;
-	char *port;
+	const char *host;
+	const char *port;
 
-	struct addrinfo  ai_hints;
 	struct addrinfo *ai_list;
-	struct addrinfo *ai_ptr;
 	int              status;
 
 	if (sock_descr >= 0)
@@ -363,14 +362,12 @@ static int ntpd_connect (void)
 	if (strlen (port) == 0)
 		port = NTPD_DEFAULT_PORT;
 
-	memset (&ai_hints, '\0', sizeof (ai_hints));
-	ai_hints.ai_flags    = 0;
-#ifdef AI_ADDRCONFIG
-	ai_hints.ai_flags   |= AI_ADDRCONFIG;
-#endif
-	ai_hints.ai_family   = PF_UNSPEC;
-	ai_hints.ai_socktype = SOCK_DGRAM;
-	ai_hints.ai_protocol = IPPROTO_UDP;
+	struct addrinfo ai_hints = {
+		.ai_family   = AF_UNSPEC,
+		.ai_flags    = AI_ADDRCONFIG,
+		.ai_protocol = IPPROTO_UDP,
+		.ai_socktype = SOCK_DGRAM
+	};
 
 	if ((status = getaddrinfo (host, port, &ai_hints, &ai_list)) != 0)
 	{
@@ -383,7 +380,7 @@ static int ntpd_connect (void)
 		return (-1);
 	}
 
-	for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
+	for (struct addrinfo *ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
 	{
 		/* create our socket descriptor */
 		if ((sock_descr = socket (ai_ptr->ai_family,
@@ -421,7 +418,6 @@ static int ntpd_receive_response (int *res_items, int *res_size,
 	struct resp_pkt  res;
 	int              status;
 	int              done;
-	int              i;
 
 	char            *items;
 	size_t           items_num;
@@ -430,13 +426,13 @@ static int ntpd_receive_response (int *res_items, int *res_size,
 	struct timeval   time_now;
 	int              timeout;
 
-	int              pkt_item_num;        /* items in this packet */
-	int              pkt_item_len;        /* size of the items in this packet */
+	int              pkt_item_num;                /* items in this packet */
+	int              pkt_item_len;                /* size of the items in this packet */
 	int              pkt_sequence;
-	char             pkt_recvd[MAXSEQ+1]; /* sequence numbers that have been received */
-	int              pkt_recvd_num;       /* number of packets that have been received */
-	int              pkt_lastseq;         /* the last sequence number */
-	ssize_t          pkt_padding;         /* Padding in this packet */
+	char             pkt_recvd[MAXSEQ+1] = { 0 }; /* sequence numbers that have been received */
+	int              pkt_recvd_num;               /* number of packets that have been received */
+	int              pkt_lastseq;                 /* the last sequence number */
+	ssize_t          pkt_padding;                 /* Padding in this packet */
 
 	if ((sd = ntpd_connect ()) < 0)
 		return (-1);
@@ -444,7 +440,6 @@ static int ntpd_receive_response (int *res_items, int *res_size,
 	items = NULL;
 	items_num = 0;
 
-	memset (pkt_recvd, '\0', sizeof (pkt_recvd));
 	pkt_recvd_num = 0;
 	pkt_lastseq   = -1;
 
@@ -508,7 +503,7 @@ static int ntpd_receive_response (int *res_items, int *res_size,
 			break;
 		}
 
-		memset ((void *) &res, '\0', sizeof (res));
+		memset (&res, '\0', sizeof (res));
 		status = recv (sd, (void *) &res, sizeof (res), 0 /* no flags */);
 
 		if ((status < 0) && ((errno == EAGAIN) || (errno == EINTR)))
@@ -666,7 +661,7 @@ static int ntpd_receive_response (int *res_items, int *res_size,
 		 */
 		DEBUG ("realloc (%p, %zu)", (void *) *res_data,
 				(items_num + pkt_item_num) * res_item_size);
-		items = realloc ((void *) *res_data,
+		items = realloc (*res_data,
 				(items_num + pkt_item_num) * res_item_size);
 		if (items == NULL)
 		{
@@ -676,7 +671,7 @@ static int ntpd_receive_response (int *res_items, int *res_size,
 		items_num += pkt_item_num;
 		*res_data = items;
 
-		for (i = 0; i < pkt_item_num; i++)
+		for (int i = 0; i < pkt_item_num; i++)
 		{
 			/* dst: There are already `*res_items' items with
 			 *      res_item_size bytes each in in `*res_data'. Set
@@ -713,7 +708,7 @@ static int ntpd_receive_response (int *res_items, int *res_size,
 static int ntpd_send_request (int req_code, int req_items, int req_size, char *req_data)
 {
 	int             sd;
-	struct req_pkt  req;
+	struct req_pkt  req = { 0 };
 	size_t          req_data_len;
 	int             status;
 
@@ -723,7 +718,6 @@ static int ntpd_send_request (int req_code, int req_items, int req_size, char *r
 	if ((sd = ntpd_connect ()) < 0)
 		return (-1);
 
-	memset ((void *) &req, '\0', sizeof (req));
 	req.rm_vn_mode = RM_VN_MODE(0, 0, 0);
 	req.auth_seq   = AUTH_SEQ (0, 0);
 	req.implementation = IMPL_XNTPD;
@@ -804,20 +798,17 @@ static uint32_t ntpd_get_refclock_id (struct info_peer_summary const *peer_info)
 static int ntpd_get_name_from_address (char *buffer, size_t buffer_size,
 		struct info_peer_summary const *peer_info, _Bool do_reverse_lookup)
 {
-	struct sockaddr_storage sa;
+	struct sockaddr_storage sa = { 0 };
 	socklen_t sa_len;
 	int flags = 0;
 	int status;
 
-	memset (&sa, 0, sizeof (sa));
-
 	if (peer_info->v6_flag)
 	{
-		struct sockaddr_in6 sa6;
+		struct sockaddr_in6 sa6 = { 0 };
 
 		assert (sizeof (sa) >= sizeof (sa6));
 
-		memset (&sa6, 0, sizeof (sa6));
 		sa6.sin6_family = AF_INET6;
 		sa6.sin6_port = htons (123);
 		memcpy (&sa6.sin6_addr, &peer_info->srcadr6,
@@ -828,11 +819,10 @@ static int ntpd_get_name_from_address (char *buffer, size_t buffer_size,
 	}
 	else
 	{
-		struct sockaddr_in sa4;
+		struct sockaddr_in sa4 = { 0 };
 
 		assert (sizeof (sa) >= sizeof (sa4));
 
-		memset (&sa4, 0, sizeof (sa4));
 		sa4.sin_family = AF_INET;
 		sa4.sin_port = htons (123);
 		memcpy (&sa4.sin_addr, &peer_info->srcadr,
@@ -868,7 +858,7 @@ static int ntpd_get_name_refclock (char *buffer, size_t buffer_size,
 	uint32_t refclock_id = ntpd_get_refclock_id (peer_info);
 	uint32_t unit_id = ntohl (peer_info->srcadr) & 0x00FF;
 
-	if (refclock_id >= refclock_names_num)
+	if (((size_t) refclock_id) >= refclock_names_num)
 		return (ntpd_get_name_from_address (buffer, buffer_size,
 					peer_info,
 					/* do_reverse_lookup = */ 0));
@@ -910,11 +900,9 @@ static int ntpd_read (void)
 	gauge_t offset_error;
 
 	int status;
-	int i;
 
 	/* On Linux, if the STA_NANO bit is set in ik->status, then ik->offset
-	 * is is nanoseconds, otherwise it's microseconds.
-	 * TODO(octo): STA_NANO is defined in the Linux specific <sys/timex.h> header. */
+	 * is is nanoseconds, otherwise it's microseconds. */
 	double scale_loop  = 1e-6;
 	double scale_error = 1e-6;
 
@@ -937,6 +925,11 @@ static int ntpd_read (void)
 				"(ik = %p; ik_num = %i; ik_size = %i)",
 				(void *) ik, ik_num, ik_size);
 		return (-1);
+	}
+
+	if (ntohs(ik->status) & STA_NANO) {
+		scale_loop  = 1e-9;
+		scale_error = 1e-9;
 	}
 
 	/* kerninfo -> estimated error */
@@ -974,7 +967,7 @@ static int ntpd_read (void)
 		return (-1);
 	}
 
-	for (i = 0; i < ps_num; i++)
+	for (int i = 0; i < ps_num; i++)
 	{
 		struct info_peer_summary *ptr;
 		double offset;

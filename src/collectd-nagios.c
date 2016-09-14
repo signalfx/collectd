@@ -104,7 +104,7 @@ static int consolitation_g = CON_NONE;
 static _Bool nan_is_error_g = 0;
 
 static char **match_ds_g = NULL;
-static int    match_ds_num_g = 0;
+static size_t match_ds_num_g = 0;
 
 /* `strdup' is an XSI extension. I don't want to pull in all of XSI just for
  * that, so here's an own implementation.. It's easy enough. The GCC attributes
@@ -128,27 +128,25 @@ static int filter_ds (size_t *values_num,
 	gauge_t *new_values;
 	char   **new_names;
 
-	size_t i;
-
 	if (match_ds_g == NULL)
 		return (RET_OKAY);
 
 	new_values = (gauge_t *)calloc (match_ds_num_g, sizeof (*new_values));
 	if (new_values == NULL)
 	{
-		fprintf (stderr, "malloc failed: %s\n", strerror (errno));
+		fprintf (stderr, "calloc failed: %s\n", strerror (errno));
 		return (RET_UNKNOWN);
 	}
 
 	new_names = (char **)calloc (match_ds_num_g, sizeof (*new_names));
 	if (new_names == NULL)
 	{
-		fprintf (stderr, "malloc failed: %s\n", strerror (errno));
+		fprintf (stderr, "calloc failed: %s\n", strerror (errno));
 		free (new_values);
 		return (RET_UNKNOWN);
 	}
 
-	for (i = 0; i < (size_t) match_ds_num_g; i++)
+	for (size_t i = 0; i < match_ds_num_g; i++)
 	{
 		size_t j;
 
@@ -182,7 +180,7 @@ static int filter_ds (size_t *values_num,
 	}
 
 	free (*values);
-	for (i = 0; i < *values_num; i++)
+	for (size_t i = 0; i < *values_num; i++)
 		free ((*values_names)[i]);
 	free (*values_names);
 
@@ -245,6 +243,7 @@ static int match_range (range_t *range, double value)
 	return (((ret - range->invert) == 0) ? 0 : 1);
 } /* int match_range */
 
+__attribute__((noreturn))
 static void usage (const char *name)
 {
 	fprintf (stderr, "Usage: %s <-s socket> <-n value_spec> <-H hostname> [options]\n"
@@ -282,7 +281,6 @@ static int do_listval (lcc_connection_t *connection)
 	char *hostname = NULL;
 
 	int status;
-	size_t i;
 
 	status = lcc_listval (connection, &ret_ident, &ret_ident_num);
 	if (status != 0) {
@@ -300,7 +298,7 @@ static int do_listval (lcc_connection_t *connection)
 		return (RET_UNKNOWN);
 	}
 
-	for (i = 0; i < ret_ident_num; ++i) {
+	for (size_t i = 0; i < ret_ident_num; ++i) {
 		char id[1024];
 
 		if ((hostname_g != NULL) && (strcasecmp (hostname_g, ret_ident[i].host)))
@@ -344,9 +342,8 @@ static int do_check_con_none (size_t values_num,
 	int num_okay = 0;
 	const char *status_str = "UNKNOWN";
 	int status_code = RET_UNKNOWN;
-	size_t i;
 
-	for (i = 0; i < values_num; i++)
+	for (size_t i = 0; i < values_num; i++)
 	{
 		if (isnan (values[i]))
 		{
@@ -389,7 +386,7 @@ static int do_check_con_none (size_t values_num,
 	if (values_num > 0)
 	{
 		printf (" |");
-		for (i = 0; i < values_num; i++)
+		for (size_t i = 0; i < values_num; i++)
 			printf (" %s=%f;;;;", values_names[i], values[i]);
 	}
 	printf ("\n");
@@ -400,7 +397,6 @@ static int do_check_con_none (size_t values_num,
 static int do_check_con_average (size_t values_num,
 		double *values, char **values_names)
 {
-	size_t i;
 	double total;
 	int total_num;
 	double average;
@@ -409,7 +405,7 @@ static int do_check_con_average (size_t values_num,
 
 	total = 0.0;
 	total_num = 0;
-	for (i = 0; i < values_num; i++)
+	for (size_t i = 0; i < values_num; i++)
 	{
 		if (isnan (values[i]))
 		{
@@ -450,7 +446,7 @@ static int do_check_con_average (size_t values_num,
 	}
 
 	printf ("%s: %g average |", status_str, average);
-	for (i = 0; i < values_num; i++)
+	for (size_t i = 0; i < values_num; i++)
 		printf (" %s=%f;;;;", values_names[i], values[i]);
 	printf ("\n");
 
@@ -460,7 +456,6 @@ static int do_check_con_average (size_t values_num,
 static int do_check_con_sum (size_t values_num,
 		double *values, char **values_names)
 {
-	size_t i;
 	double total;
 	int total_num;
 	const char *status_str = "UNKNOWN";
@@ -468,7 +463,7 @@ static int do_check_con_sum (size_t values_num,
 
 	total = 0.0;
 	total_num = 0;
-	for (i = 0; i < values_num; i++)
+	for (size_t i = 0; i < values_num; i++)
 	{
 		if (isnan (values[i]))
 		{
@@ -507,7 +502,7 @@ static int do_check_con_sum (size_t values_num,
 	}
 
 	printf ("%s: %g sum |", status_str, total);
-	for (i = 0; i < values_num; i++)
+	for (size_t i = 0; i < values_num; i++)
 		printf (" %s=%f;;;;", values_names[i], values[i]);
 	printf ("\n");
 
@@ -517,7 +512,6 @@ static int do_check_con_sum (size_t values_num,
 static int do_check_con_percentage (size_t values_num,
 		double *values, char **values_names)
 {
-	size_t i;
 	double sum = 0.0;
 	double percentage;
 
@@ -530,7 +524,7 @@ static int do_check_con_percentage (size_t values_num,
 		return (RET_WARNING);
 	}
 
-	for (i = 0; i < values_num; i++)
+	for (size_t i = 0; i < values_num; i++)
 	{
 		if (isnan (values[i]))
 		{
@@ -570,7 +564,7 @@ static int do_check_con_percentage (size_t values_num,
 	}
 
 	printf ("%s: %lf percent |", status_str, percentage);
-	for (i = 0; i < values_num; i++)
+	for (size_t i = 0; i < values_num; i++)
 		printf (" %s=%lf;;;;", values_names[i], values[i]);
 	return (status_code);
 } /* int do_check_con_percentage */
@@ -582,14 +576,12 @@ static int do_check (lcc_connection_t *connection)
 	size_t   values_num;
 	char ident_str[1024];
 	lcc_identifier_t ident;
-	size_t i;
 	int status;
 
 	snprintf (ident_str, sizeof (ident_str), "%s/%s",
 			hostname_g, value_string_g);
 	ident_str[sizeof (ident_str) - 1] = 0;
 
-	memset (&ident, 0, sizeof (ident));
 	status = lcc_string_to_identifier (connection, &ident, ident_str);
 	if (status != 0)
 	{
@@ -617,9 +609,9 @@ static int do_check (lcc_connection_t *connection)
 
 	status = RET_UNKNOWN;
 	if (consolitation_g == CON_NONE)
-		status =  do_check_con_none (values_num, values, values_names);
+		status = do_check_con_none (values_num, values, values_names);
 	else if (consolitation_g == CON_AVERAGE)
-		status =  do_check_con_average (values_num, values, values_names);
+		status = do_check_con_average (values_num, values, values_names);
 	else if (consolitation_g == CON_SUM)
 		status = do_check_con_sum (values_num, values, values_names);
 	else if (consolitation_g == CON_PERCENTAGE)
@@ -627,7 +619,7 @@ static int do_check (lcc_connection_t *connection)
 
 	free (values);
 	if (values_names != NULL)
-		for (i = 0; i < values_num; i++)
+		for (size_t i = 0; i < values_num; i++)
 			free (values_names[i]);
 	free (values_names);
 
@@ -693,7 +685,7 @@ int main (int argc, char **argv)
 			case 'd':
 			{
 				char **tmp;
-				tmp = (char **) realloc (match_ds_g,
+				tmp = realloc (match_ds_g,
 						(match_ds_num_g + 1)
 						* sizeof (char *));
 				if (tmp == NULL)

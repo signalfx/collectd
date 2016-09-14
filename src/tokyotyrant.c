@@ -20,6 +20,7 @@
  **/
 
 #include "collectd.h"
+
 #include "plugin.h"
 #include "common.h"
 #include "utils_cache.h"
@@ -106,8 +107,8 @@ static void tt_submit (gauge_t val, const char* type)
 
 static void tt_open_db (void)
 {
-	char* host = NULL;
-	int   port = DEFAULT_PORT;
+	const char *host;
+	int         port = DEFAULT_PORT;
 
 	if (rdb != NULL)
 		return;

@@ -29,6 +29,7 @@
 #define COMMON_H
 
 #include "collectd.h"
+
 #include "plugin.h"
 
 #if HAVE_PWD_H
@@ -37,9 +38,7 @@
 
 #define sfree(ptr) \
 	do { \
-		if((ptr) != NULL) { \
-			free(ptr); \
-		} \
+		free(ptr); \
 		(ptr) = NULL; \
 	} while (0)
 
@@ -224,8 +223,6 @@ int escape_string (char *buffer, size_t buffer_size);
  */
 void replace_special (char *buffer, size_t buffer_size);
 
-int strsubstitute (char *str, char c_from, char c_to);
-
 /*
  * NAME
  *   strunescape
@@ -357,12 +354,15 @@ counter_t counter_diff (counter_t old_value, counter_t new_value);
 int rate_to_value (value_t *ret_value, gauge_t rate,
 		rate_to_value_state_t *state, int ds_type, cdtime_t t);
 
-int value_to_rate (value_t *ret_rate, derive_t value,
-		value_to_rate_state_t *state, int ds_type, cdtime_t t);
+int value_to_rate (gauge_t *ret_rate, value_t value, int ds_type, cdtime_t t,
+		value_to_rate_state_t *state);
 
 /* Converts a service name (a string) to a port number
  * (in the range [1-65535]). Returns less than zero on error. */
 int service_name_to_port_number (const char *service_name);
+
+/* Sets various, non-default, socket options */
+void set_sock_opts (int sockfd);
 
 /** Parse a string to a derive_t value. Returns zero on success or non-zero on
  * failure. If failure is returned, ret_value is not touched. */
@@ -374,5 +374,13 @@ int strtogauge (const char *string, gauge_t *ret_value);
 
 int strarray_add (char ***ret_array, size_t *ret_array_len, char const *str);
 void strarray_free (char **array, size_t array_len);
+
+#ifdef HAVE_SYS_CAPABILITY_H
+/** Check if the current process benefits from the capability passed in
+ * argument. Returns zero if it does, less than zero if it doesn't or on error.
+ * See capabilities(7) for the list of possible capabilities.
+ * */
+int check_capability (int capability);
+#endif /* HAVE_SYS_CAPABILITY_H */
 
 #endif /* COMMON_H */

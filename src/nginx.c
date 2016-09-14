@@ -27,9 +27,9 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
-#include "configfile.h"
 
 #include <curl/curl.h>
 
@@ -71,7 +71,7 @@ static size_t nginx_curl_callback (void *buf, size_t size, size_t nmemb,
     len = (sizeof (nginx_buffer) - 1) - nginx_buffer_len;
   }
 
-  if (len <= 0)
+  if (len == 0)
     return (len);
 
   memcpy (&nginx_buffer[nginx_buffer_len], buf, len);
@@ -188,15 +188,14 @@ static int init (void)
   }
   else
   {
-    curl_easy_setopt (curl, CURLOPT_TIMEOUT_MS,
-       CDTIME_T_TO_MS(plugin_get_interval()));
+    curl_easy_setopt (curl, CURLOPT_TIMEOUT_MS, (long) CDTIME_T_TO_MS(plugin_get_interval()));
   }
 #endif
 
   return (0);
 } /* void init */
 
-static void submit (char *type, char *inst, long long value)
+static void submit (const char *type, const char *inst, long long value)
 {
   value_t values[1];
   value_list_t vl = VALUE_LIST_INIT;
@@ -225,8 +224,6 @@ static void submit (char *type, char *inst, long long value)
 
 static int nginx_read (void)
 {
-  int i;
-
   char *ptr;
   char *lines[16];
   int   lines_num = 0;
@@ -264,7 +261,7 @@ static int nginx_read (void)
    *  16630948 16630948 31070465
    * Reading: 6 Writing: 179 Waiting: 106
    */
-  for (i = 0; i < lines_num; i++)
+  for (int i = 0; i < lines_num; i++)
   {
     fields_num = strsplit (lines[i], fields,
 	(sizeof (fields) / sizeof (fields[0])));

@@ -37,12 +37,9 @@
 #define _BSD_SOURCE
 
 #include "collectd.h"
+
 #include "plugin.h"
 #include "common.h"
-
-#if HAVE_SYS_SOCKET_H
-# include <sys/socket.h>
-#endif
 
 #if HAVE_NET_IF_ARP_H
 # include <net/if_arp.h>
@@ -65,9 +62,6 @@
 #endif
 #if HAVE_NETINET_IP6_H
 # include <netinet/ip6.h>
-#endif
-#if HAVE_NETINET_IP_COMPAT_H
-# include <netinet/ip_compat.h>
 #endif
 #if HAVE_NETINET_IF_ETHER_H
 # include <netinet/if_ether.h>
@@ -163,9 +157,6 @@ typedef int (printer)(const char *, ...);
 /*
  * Global variables
  */
-int qtype_counts[T_MAX];
-int opcode_counts[OP_MAX];
-int qclass_counts[C_MAX];
 
 #if HAVE_PCAP_H
 static pcap_t *pcap_obj = NULL;
@@ -204,9 +195,7 @@ static int cmp_in6_addr (const struct in6_addr *a,
 
 static inline int ignore_list_match (const struct in6_addr *addr)
 {
-    ip_list_t *ptr;
-
-    for (ptr = IgnoreList; ptr != NULL; ptr = ptr->next)
+    for (ip_list_t *ptr = IgnoreList; ptr != NULL; ptr = ptr->next)
 	if (cmp_in6_addr (addr, &ptr->addr) == 0)
 	    return (1);
     return (0);
@@ -219,7 +208,7 @@ static void ignore_list_add (const struct in6_addr *addr)
     if (ignore_list_match (addr) != 0)
 	return;
 
-    new = malloc (sizeof (ip_list_t));
+    new = malloc (sizeof (*new));
     if (new == NULL)
     {
 	perror ("malloc");
@@ -235,7 +224,6 @@ static void ignore_list_add (const struct in6_addr *addr)
 void ignore_list_add_name (const char *name)
 {
     struct addrinfo *ai_list;
-    struct addrinfo *ai_ptr;
     struct in6_addr  addr;
     int status;
 
@@ -243,7 +231,7 @@ void ignore_list_add_name (const char *name)
     if (status != 0)
 	return;
 
-    for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
+    for (struct addrinfo *ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
     {
 	if (ai_ptr->ai_family == AF_INET)
 	{
@@ -293,8 +281,7 @@ void dnstop_set_callback (void (*cb) (const rfc1035_header_t *))
 
 #define RFC1035_MAXLABELSZ 63
 static int
-rfc1035NameUnpack(const char *buf, size_t sz, off_t * off, char *name, size_t ns
-)
+rfc1035NameUnpack(const char *buf, size_t sz, off_t * off, char *name, size_t ns)
 {
     off_t no = 0;
     unsigned char c;
@@ -302,10 +289,10 @@ rfc1035NameUnpack(const char *buf, size_t sz, off_t * off, char *name, size_t ns
     static int loop_detect = 0;
     if (loop_detect > 2)
 	return 4;		/* compression loop */
-    if (ns <= 0)
+    if (ns == 0)
 	return 4;		/* probably compression loop */
     do {
-	if ((*off) >= sz)
+	if ((*off) >= ((off_t) sz))
 	    break;
 	c = *(buf + (*off));
 	if (c > 191) {
@@ -317,11 +304,11 @@ rfc1035NameUnpack(const char *buf, size_t sz, off_t * off, char *name, size_t ns
 	    s = ntohs(s);
 	    (*off) += sizeof(s);
 	    /* Sanity check */
-	    if ((*off) >= sz)
+	    if ((*off) >= ((off_t) sz))
 		return 1;	/* message too short */
 	    ptr = s & 0x3FFF;
 	    /* Make sure the pointer is inside this message */
-	    if (ptr >= sz)
+	    if (ptr >= ((off_t) sz))
 		return 2;	/* bad compression ptr */
 	    if (ptr < DNS_MSG_HDR_SZ)
 		return 2;	/* bad compression ptr */
@@ -334,7 +321,6 @@ rfc1035NameUnpack(const char *buf, size_t sz, off_t * off, char *name, size_t ns
 	     * "(The 10 and 01 combinations are reserved for future use.)"
 	     */
 	    return 3;		/* reserved label/compression flags */
-	    break;
 	} else {
 	    (*off)++;
 	    len = (size_t) c;
@@ -355,7 +341,7 @@ rfc1035NameUnpack(const char *buf, size_t sz, off_t * off, char *name, size_t ns
     if (no > 0)
 	*(name + no - 1) = '\0';
     /* make sure we didn't allow someone to overflow the name buffer */
-    assert(no <= ns);
+    assert(no <= ((off_t) ns));
     return 0;
 }
 
@@ -424,11 +410,6 @@ handle_dns(const char *buf, int len)
     qh.qclass = ntohs(us);
 
     qh.length = (uint16_t) len;
-
-    /* gather stats */
-    qtype_counts[qh.qtype]++;
-    qclass_counts[qh.qclass]++;
-    opcode_counts[qh.opcode]++;
 
     if (Callback != NULL)
 	    Callback (&qh);
@@ -546,7 +527,7 @@ handle_ip(const struct ip *ip, int len)
 	    return (0);
     if (IPPROTO_UDP != ip->ip_p)
 	return 0;
-    memcpy(buf, (void *) ip + offset, len - offset);
+    memcpy(buf, ((char *)ip) + offset, len - offset);
     if (0 == handle_udp((struct udphdr *) buf, len - offset))
 	return 0;
     return 1;
@@ -768,22 +749,41 @@ const char *qtype_str(int t)
 	    case ns_t_srv:      return ("SRV");
 	    case ns_t_atma:     return ("ATMA");
 	    case ns_t_naptr:    return ("NAPTR");
+	    case ns_t_opt:      return ("OPT");
+# if __NAMESER >= 19991006
 	    case ns_t_kx:       return ("KX");
 	    case ns_t_cert:     return ("CERT");
 	    case ns_t_a6:       return ("A6");
 	    case ns_t_dname:    return ("DNAME");
 	    case ns_t_sink:     return ("SINK");
-	    case ns_t_opt:      return ("OPT");
-# if __NAMESER >= 19991006
 	    case ns_t_tsig:     return ("TSIG");
 # endif
+# if __NAMESER >= 20090302
+	    case ns_t_apl:      return ("APL");
+	    case ns_t_ds:       return ("DS");
+	    case ns_t_sshfp:    return ("SSHFP");
+	    case ns_t_ipseckey: return ("IPSECKEY");
+	    case ns_t_rrsig:    return ("RRSIG");
+	    case ns_t_nsec:     return ("NSEC");
+	    case ns_t_dnskey:   return ("DNSKEY");
+	    case ns_t_dhcid:    return ("DHCID");
+	    case ns_t_nsec3:    return ("NSEC3");
+	    case ns_t_nsec3param: return ("NSEC3PARAM");
+	    case ns_t_hip:      return ("HIP");
+	    case ns_t_spf:      return ("SPF");
 	    case ns_t_ixfr:     return ("IXFR");
+# endif
 	    case ns_t_axfr:     return ("AXFR");
 	    case ns_t_mailb:    return ("MAILB");
 	    case ns_t_maila:    return ("MAILA");
 	    case ns_t_any:      return ("ANY");
+# if __NAMESER >= 19991006
 	    case ns_t_zxfr:     return ("ZXFR");
-/* #endif __NAMESER >= 19991006 */
+# endif
+# if __NAMESER >= 20090302
+	    case ns_t_dlv:       return ("DLV");
+# endif
+/* #endif __NAMESER >= 19991001 */
 #elif (defined (__BIND)) && (__BIND >= 19950621)
 	    case T_A:		return ("A"); /* 1 ... */
 	    case T_NS:		return ("NS");
@@ -845,9 +845,7 @@ const char *qtype_str(int t)
 	    default:
 		    ssnprintf (buf, sizeof (buf), "#%i", t);
 		    return (buf);
-    }; /* switch (t) */
-    /* NOTREACHED */
-    return (NULL);
+    } /* switch (t) */
 }
 
 const char *opcode_str (int o)
@@ -856,24 +854,18 @@ const char *opcode_str (int o)
     switch (o) {
     case 0:
 	return "Query";
-	break;
     case 1:
 	return "Iquery";
-	break;
     case 2:
 	return "Status";
-	break;
     case 4:
 	return "Notify";
-	break;
     case 5:
 	return "Update";
-	break;
     default:
 	ssnprintf(buf, sizeof (buf), "Opcode%d", o);
 	return buf;
     }
-    /* NOTREACHED */
 }
 
 const char *rcode_str (int rcode)
@@ -917,8 +909,6 @@ const char *rcode_str (int rcode)
 			ssnprintf (buf, sizeof (buf), "RCode%i", rcode);
 			return (buf);
 	}
-	/* Never reached */
-	return (NULL);
 } /* const char *rcode_str (int rcode) */
 
 #if 0

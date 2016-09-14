@@ -42,14 +42,12 @@
  */
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
-#include "configfile.h"
 
 #include "utils_cache.h"
 
-#include <pthread.h>
-#include <sys/socket.h>
 #include <netdb.h>
 
 #ifndef WT_DEFAULT_NODE
@@ -143,7 +141,7 @@ static int wt_flush_nolock(cdtime_t timeout, struct wt_callback *cb)
             return 0;
     }
 
-    if (cb->send_buf_fill <= 0)
+    if (cb->send_buf_fill == 0)
     {
         cb->send_buf_init_time = cdtime();
         return 0;
@@ -157,9 +155,7 @@ static int wt_flush_nolock(cdtime_t timeout, struct wt_callback *cb)
 
 static int wt_callback_init(struct wt_callback *cb)
 {
-    struct addrinfo ai_hints;
     struct addrinfo *ai_list;
-    struct addrinfo *ai_ptr;
     int status;
 
     const char *node = cb->node ? cb->node : WT_DEFAULT_NODE;
@@ -168,14 +164,11 @@ static int wt_callback_init(struct wt_callback *cb)
     if (cb->sock_fd > 0)
         return 0;
 
-    memset(&ai_hints, 0, sizeof(ai_hints));
-#ifdef AI_ADDRCONFIG
-    ai_hints.ai_flags    |= AI_ADDRCONFIG;
-#endif
-    ai_hints.ai_family   = AF_UNSPEC;
-    ai_hints.ai_socktype = SOCK_STREAM;
-
-    ai_list = NULL;
+    struct addrinfo ai_hints = {
+        .ai_family = AF_UNSPEC,
+        .ai_flags = AI_ADDRCONFIG,
+        .ai_socktype = SOCK_STREAM
+    };
 
     status = getaddrinfo(node, service, &ai_hints, &ai_list);
     if (status != 0)
@@ -186,12 +179,14 @@ static int wt_callback_init(struct wt_callback *cb)
     }
 
     assert (ai_list != NULL);
-    for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
+    for (struct addrinfo *ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next)
     {
         cb->sock_fd = socket(ai_ptr->ai_family, ai_ptr->ai_socktype,
                              ai_ptr->ai_protocol);
         if (cb->sock_fd < 0)
             continue;
+
+        set_sock_opts(cb->sock_fd);
 
         status = connect(cb->sock_fd, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
         if (status != 0)
@@ -347,7 +342,7 @@ static int wt_format_name(char *ret, int ret_len,
 {
     int status;
     char *temp = NULL;
-    char *prefix = "";
+    const char *prefix = "";
     const char *meta_prefix = "tsdb_prefix";
 
     if (vl->meta) {
@@ -410,11 +405,11 @@ static int wt_send_message (const char* key, const char* value,
                             const char* host, meta_data_t *md)
 {
     int status;
-    int message_len;
+    size_t message_len;
     char *temp = NULL;
-    char *tags = "";
+    const char *tags = "";
     char message[1024];
-    char *host_tags = cb->host_tags ? cb->host_tags : "";
+    const char *host_tags = cb->host_tags ? cb->host_tags : "";
     const char *meta_tsdb = "tsdb_tags";
 
     /* skip if value is NaN */
@@ -435,7 +430,7 @@ static int wt_send_message (const char* key, const char* value,
         }
     }
 
-    message_len = ssnprintf (message,
+    status = ssnprintf (message,
                              sizeof(message),
                              "put %s %.0f %s fqdn=%s %s %s\r\n",
                              key,
@@ -444,12 +439,14 @@ static int wt_send_message (const char* key, const char* value,
                              host,
                              tags,
                              host_tags);
-
     sfree(temp);
+    if (status < 0)
+        return -1;
+    message_len = (size_t) status;
 
     if (message_len >= sizeof(message)) {
         ERROR("write_tsdb plugin: message buffer too small: "
-              "Need %d bytes.", message_len + 1);
+              "Need %zu bytes.", message_len + 1);
         return -1;
     }
 
@@ -505,7 +502,7 @@ static int wt_write_messages(const data_set_t *ds, const value_list_t *vl,
     char key[10*DATA_MAX_NAME_LEN];
     char values[512];
 
-    int status, i;
+    int status;
 
     if (0 != strcmp(ds->type, vl->type))
     {
@@ -514,7 +511,7 @@ static int wt_write_messages(const data_set_t *ds, const value_list_t *vl,
         return -1;
     }
 
-    for (i = 0; i < ds->ds_num; i++)
+    for (size_t i = 0; i < ds->ds_num; i++)
     {
         const char *ds_name = NULL;
 
@@ -573,17 +570,14 @@ static int wt_write(const data_set_t *ds, const value_list_t *vl,
 static int wt_config_tsd(oconfig_item_t *ci)
 {
     struct wt_callback *cb;
-    user_data_t user_data;
     char callback_name[DATA_MAX_NAME_LEN];
-    int i;
 
-    cb = malloc(sizeof(*cb));
+    cb = calloc(1, sizeof(*cb));
     if (cb == NULL)
     {
-        ERROR("write_tsdb plugin: malloc failed.");
+        ERROR("write_tsdb plugin: calloc failed.");
         return -1;
     }
-    memset(cb, 0, sizeof(*cb));
     cb->sock_fd = -1;
     cb->node = NULL;
     cb->service = NULL;
@@ -592,7 +586,7 @@ static int wt_config_tsd(oconfig_item_t *ci)
 
     pthread_mutex_init (&cb->send_lock, NULL);
 
-    for (i = 0; i < ci->children_num; i++)
+    for (int i = 0; i < ci->children_num; i++)
     {
         oconfig_item_t *child = ci->children + i;
 
@@ -617,9 +611,11 @@ static int wt_config_tsd(oconfig_item_t *ci)
               cb->node != NULL ? cb->node : WT_DEFAULT_NODE,
               cb->service != NULL ? cb->service : WT_DEFAULT_SERVICE);
 
-    memset(&user_data, 0, sizeof(user_data));
-    user_data.data = cb;
-    user_data.free_func = wt_callback_free;
+    user_data_t user_data = {
+        .data = cb,
+        .free_func = wt_callback_free
+    };
+
     plugin_register_write(callback_name, wt_write, &user_data);
 
     user_data.free_func = NULL;
@@ -630,9 +626,7 @@ static int wt_config_tsd(oconfig_item_t *ci)
 
 static int wt_config(oconfig_item_t *ci)
 {
-    int i;
-
-    for (i = 0; i < ci->children_num; i++)
+    for (int i = 0; i < ci->children_num; i++)
     {
         oconfig_item_t *child = ci->children + i;
 

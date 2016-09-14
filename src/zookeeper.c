@@ -25,11 +25,11 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
 
 #include <netdb.h>
-#include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -106,18 +106,18 @@ static int zookeeper_connect (void)
 {
 	int sk = -1;
 	int status;
-	struct addrinfo ai_hints;
-	struct addrinfo *ai;
 	struct addrinfo *ai_list;
-	char *host;
-	char *port;
-
-	memset ((void *) &ai_hints, '\0', sizeof (ai_hints));
-	ai_hints.ai_family   = AF_UNSPEC;
-	ai_hints.ai_socktype = SOCK_STREAM;
+	const char *host;
+	const char *port;
 
 	host = (zk_host != NULL) ? zk_host : ZOOKEEPER_DEF_HOST;
 	port = (zk_port != NULL) ? zk_port : ZOOKEEPER_DEF_PORT;
+
+	struct addrinfo ai_hints = {
+		.ai_family   = AF_UNSPEC,
+		.ai_socktype = SOCK_STREAM
+	};
+
 	status = getaddrinfo (host, port, &ai_hints, &ai_list);
 	if (status != 0)
 	{
@@ -129,7 +129,7 @@ static int zookeeper_connect (void)
 		return (-1);
 	}
 
-	for (ai = ai_list; ai != NULL; ai = ai->ai_next)
+	for (struct addrinfo *ai = ai_list; ai != NULL; ai = ai->ai_next)
 	{
 		sk = socket (ai->ai_family, SOCK_STREAM, 0);
 		if (sk < 0)
@@ -160,8 +160,7 @@ static int zookeeper_connect (void)
 
 static int zookeeper_query (char *buffer, size_t buffer_size)
 {
-	int sk = -1;
-	int status;
+	int sk, status;
 	size_t buffer_fill;
 
 	sk = zookeeper_connect();

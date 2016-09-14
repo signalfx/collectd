@@ -25,6 +25,7 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "filter_chain.h"
 #include "utils_subst.h"
@@ -61,7 +62,7 @@ static char *tr_strdup (const char *orig) /* {{{ */
     return (NULL);
 
   sz = strlen (orig) + 1;
-  dest = (char *) malloc (sz);
+  dest = malloc (sz);
   if (dest == NULL)
     return (NULL);
 
@@ -102,13 +103,12 @@ static int tr_config_add_action (tr_action_t **dest, /* {{{ */
     return (-1);
   }
 
-  act = (tr_action_t *) malloc (sizeof (*act));
+  act = calloc (1, sizeof (*act));
   if (act == NULL)
   {
-    ERROR ("tr_config_add_action: malloc failed.");
+    ERROR ("tr_config_add_action: calloc failed.");
     return (-ENOMEM);
   }
-  memset (act, 0, sizeof (*act));
 
   act->replacement = NULL;
   act->may_be_empty = may_be_empty;
@@ -156,20 +156,18 @@ static int tr_config_add_action (tr_action_t **dest, /* {{{ */
 static int tr_action_invoke (tr_action_t *act_head, /* {{{ */
     char *buffer_in, size_t buffer_in_size, int may_be_empty)
 {
-  tr_action_t *act;
   int status;
   char buffer[DATA_MAX_NAME_LEN];
-  regmatch_t matches[8];
+  regmatch_t matches[8] = { [0] = { 0 } };
 
   if (act_head == NULL)
     return (-EINVAL);
 
   sstrncpy (buffer, buffer_in, sizeof (buffer));
-  memset (matches, 0, sizeof (matches));
 
   DEBUG ("target_replace plugin: tr_action_invoke: <- buffer = %s;", buffer);
 
-  for (act = act_head; act != NULL; act = act->next)
+  for (tr_action_t *act = act_head; act != NULL; act = act->next)
   {
     char temp[DATA_MAX_NAME_LEN];
     char *subst_status;
@@ -190,7 +188,7 @@ static int tr_action_invoke (tr_action_t *act_head, /* {{{ */
     }
 
     subst_status = subst (temp, sizeof (temp), buffer,
-        matches[0].rm_so, matches[0].rm_eo, act->replacement);
+        (size_t) matches[0].rm_so, (size_t) matches[0].rm_eo, act->replacement);
     if (subst_status == NULL)
     {
       ERROR ("Target `replace': subst (buffer = %s, start = %zu, end = %zu, "
@@ -242,15 +240,13 @@ static int tr_create (const oconfig_item_t *ci, void **user_data) /* {{{ */
 {
   tr_data_t *data;
   int status;
-  int i;
 
-  data = (tr_data_t *) malloc (sizeof (*data));
+  data = calloc (1, sizeof (*data));
   if (data == NULL)
   {
-    ERROR ("tr_create: malloc failed.");
+    ERROR ("tr_create: calloc failed.");
     return (-ENOMEM);
   }
-  memset (data, 0, sizeof (*data));
 
   data->host = NULL;
   data->plugin = NULL;
@@ -259,7 +255,7 @@ static int tr_create (const oconfig_item_t *ci, void **user_data) /* {{{ */
   data->type_instance = NULL;
 
   status = 0;
-  for (i = 0; i < ci->children_num; i++)
+  for (int i = 0; i < ci->children_num; i++)
   {
     oconfig_item_t *child = ci->children + i;
 
@@ -348,9 +344,8 @@ static int tr_invoke (const data_set_t *ds, value_list_t *vl, /* {{{ */
 
 void module_register (void)
 {
-	target_proc_t tproc;
+	target_proc_t tproc = { 0 };
 
-	memset (&tproc, 0, sizeof (tproc));
 	tproc.create  = tr_create;
 	tproc.destroy = tr_destroy;
 	tproc.invoke  = tr_invoke;

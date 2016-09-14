@@ -25,15 +25,18 @@
  **/
 
 #include "collectd.h"
+
 #include "common.h"
 #include "plugin.h"
-#include "configfile.h"
 #include "utils_complain.h"
 
-#include <pthread.h>
 #include <netinet/in.h>
 #if HAVE_NETDB_H
 # include <netdb.h> /* NI_MAXHOST */
+#endif
+
+#ifdef HAVE_SYS_CAPABILITY_H
+# include <sys/capability.h>
 #endif
 
 #include <oping.h>
@@ -73,6 +76,7 @@ static char  *ping_source = NULL;
 #ifdef HAVE_OPING_1_3
 static char  *ping_device = NULL;
 #endif
+static char  *ping_data = NULL;
 static int    ping_ttl = PING_DEF_TTL;
 static double ping_interval = 1.0;
 static double ping_timeout = 0.9;
@@ -91,6 +95,7 @@ static const char *config_keys[] =
 #ifdef HAVE_OPING_1_3
   "Device",
 #endif
+  "Size",
   "TTL",
   "Interval",
   "Timeout",
@@ -150,11 +155,10 @@ static void time_calc (struct timespec *ts_dest, /* {{{ */
 
 static int ping_dispatch_all (pingobj_t *pingobj) /* {{{ */
 {
-  pingobj_iter_t *iter;
   hostlist_t *hl;
   int status;
 
-  for (iter = ping_iterator_get (pingobj);
+  for (pingobj_iter_t *iter = ping_iterator_get (pingobj);
       iter != NULL;
       iter = ping_iterator_next (iter))
   { /* {{{ */
@@ -210,7 +214,8 @@ static int ping_dispatch_all (pingobj_t *pingobj) /* {{{ */
       hl->pkg_missed++;
 
     /* if the host did not answer our last N packages, trigger a resolv. */
-    if (ping_max_missed >= 0 && hl->pkg_missed >= ping_max_missed)
+    if ((ping_max_missed >= 0)
+        && (hl->pkg_missed >= ((uint32_t) ping_max_missed)))
     { /* {{{ */
       /* we reset the missed package counter here, since we only want to
        * trigger a resolv every N packages and not every package _AFTER_ N
@@ -248,7 +253,6 @@ static void *ping_thread (void *arg) /* {{{ */
   struct timespec ts_wait;
   struct timespec ts_int;
 
-  hostlist_t *hl;
   int count;
 
   c_complain_t complaint = C_COMPLAIN_INIT_STATIC;
@@ -279,9 +283,12 @@ static void *ping_thread (void *arg) /* {{{ */
   ping_setopt (pingobj, PING_OPT_TIMEOUT, (void *) &ping_timeout);
   ping_setopt (pingobj, PING_OPT_TTL, (void *) &ping_ttl);
 
+  if (ping_data != NULL)
+    ping_setopt (pingobj, PING_OPT_DATA, (void *) ping_data);
+
   /* Add all the hosts to the ping object. */
   count = 0;
-  for (hl = hostlist_head; hl != NULL; hl = hl->next)
+  for (hostlist_t *hl = hostlist_head; hl != NULL; hl = hl->next)
   {
     int tmp_status;
     tmp_status = ping_host_add (pingobj, hl->host);
@@ -444,6 +451,20 @@ static int ping_init (void) /* {{{ */
         "Will use a timeout of %gs.", ping_timeout);
   }
 
+#if defined(HAVE_SYS_CAPABILITY_H) && defined(CAP_NET_RAW)
+  if (check_capability (CAP_NET_RAW) != 0)
+  {
+    if (getuid () == 0)
+      WARNING ("ping plugin: Running collectd as root, but the CAP_NET_RAW "
+          "capability is missing. The plugin's read function will probably "
+          "fail. Is your init system dropping capabilities?");
+    else
+      WARNING ("ping plugin: collectd doesn't have the CAP_NET_RAW capability. "
+          "If you don't want to run collectd as root, try running \"setcap "
+          "cap_net_raw=ep\" on the collectd binary.");
+  }
+#endif
+
   return (start_thread ());
 } /* }}} int ping_init */
 
@@ -474,7 +495,7 @@ static int ping_config (const char *key, const char *value) /* {{{ */
     hostlist_t *hl;
     char *host;
 
-    hl = (hostlist_t *) malloc (sizeof (hostlist_t));
+    hl = malloc (sizeof (*hl));
     if (hl == NULL)
     {
       char errbuf[1024];
@@ -535,6 +556,37 @@ static int ping_config (const char *key, const char *value) /* {{{ */
       WARNING ("ping plugin: Ignoring invalid interval %g (%s)",
           tmp, value);
   }
+  else if (strcasecmp (key, "Size") == 0) {
+    size_t size = (size_t) atoi (value);
+
+    /* Max IP packet size - (IPv6 + ICMP) = 65535 - (40 + 8) = 65487 */
+    if (size <= 65487)
+    {
+      sfree (ping_data);
+      ping_data = malloc (size + 1);
+      if (ping_data == NULL)
+      {
+        ERROR ("ping plugin: malloc failed.");
+        return (1);
+      }
+
+      /* Note: By default oping is using constant string
+       * "liboping -- ICMP ping library <http://octo.it/liboping/>"
+       * which is exactly 56 bytes.
+       *
+       * Optimally we would follow the ping(1) behaviour, but we
+       * cannot use byte 00 or start data payload at exactly same
+       * location, due to oping library limitations. */
+      for (size_t i = 0; i < size; i++) /* {{{ */
+      {
+        /* This restricts data pattern to be only composed of easily
+         * printable characters, and not NUL character. */
+        ping_data[i] = ('0' + i % 64);
+      }  /* }}} for (i = 0; i < size; i++) */
+      ping_data[size] = 0;
+    } else
+      WARNING ("ping plugin: Ignoring invalid Size %zu.", size);
+  }
   else if (strcasecmp (key, "Timeout") == 0)
   {
     double tmp;
@@ -581,15 +633,13 @@ static void submit (const char *host, const char *type, /* {{{ */
 
 static int ping_read (void) /* {{{ */
 {
-  hostlist_t *hl;
-
   if (ping_thread_error != 0)
   {
     ERROR ("ping plugin: The ping thread had a problem. Restarting it.");
 
     stop_thread ();
 
-    for (hl = hostlist_head; hl != NULL; hl = hl->next)
+    for (hostlist_t *hl = hostlist_head; hl != NULL; hl = hl->next)
     {
       hl->pkg_sent = 0;
       hl->pkg_recv = 0;
@@ -602,7 +652,7 @@ static int ping_read (void) /* {{{ */
     return (-1);
   } /* if (ping_thread_error != 0) */
 
-  for (hl = hostlist_head; hl != NULL; hl = hl->next) /* {{{ */
+  for (hostlist_t *hl = hostlist_head; hl != NULL; hl = hl->next) /* {{{ */
   {
     uint32_t pkg_sent;
     uint32_t pkg_recv;
@@ -684,6 +734,11 @@ static int ping_shutdown (void) /* {{{ */
     sfree (hl);
 
     hl = hl_next;
+  }
+
+  if (ping_data != NULL) {
+    free (ping_data);
+    ping_data = NULL;
   }
 
   return (0);
