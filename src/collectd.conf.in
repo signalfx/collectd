@@ -114,6 +114,7 @@
 #@BUILD_PLUGIN_DF_TRUE@LoadPlugin df
 #@BUILD_PLUGIN_DISK_TRUE@LoadPlugin disk
 #@BUILD_PLUGIN_DNS_TRUE@LoadPlugin dns
+#@BUILD_PLUGIN_DPDKSTAT_TRUE@LoadPlugin dpdkstat
 #@BUILD_PLUGIN_DRBD_TRUE@LoadPlugin drbd
 #@BUILD_PLUGIN_EMAIL_TRUE@LoadPlugin email
 #@BUILD_PLUGIN_ENTROPY_TRUE@LoadPlugin entropy
@@ -520,6 +521,16 @@
 #	SelectNumericQueryTypes true
 #</Plugin>
 
+#<Plugin dpdkstat>
+#       Interval 1
+#       Coremask "0xf"
+#       ProcessType "secondary"
+#       FilePrefix "rte"
+#       EnabledPortMask 0xffff
+#       PortName "interface1"
+#       PortName "interface2"
+#</Plugin>
+
 #<Plugin email>
 #	SocketFile "@localstatedir@/run/@PACKAGE_NAME@-email"
 #	SocketGroup "collectd"
@@ -597,8 +608,11 @@
 #</Plugin>
 
 #<Plugin hugepages>
-#    ReportPerNodeHP "true"
-#    ReportRootHP "true"
+#    ReportPerNodeHP  true
+#    ReportRootHP     true
+#    ValuesPages      true
+#    ValuesBytes      false
+#    ValuesPercentage false
 #</Plugin>
 
 #<Plugin interface>
@@ -1415,6 +1429,8 @@
 #    StoreRates true
 #    AlwaysAppendDS false
 #    EscapeCharacter "_"
+#    SeparateInstances false
+#    DropDuplicateFields false
 #  </Node>
 #</Plugin>
 

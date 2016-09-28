@@ -169,11 +169,7 @@ static void cldap_submit_value (const char *type, const char *type_instance, /* 
 	vl.values     = &value;
 	vl.values_len = 1;
 
-	if ((st->host == NULL)
-			|| (strcmp ("", st->host) == 0)
-			|| (strcmp ("localhost", st->host) == 0))
-		sstrncpy (vl.host, hostname_g, sizeof (vl.host));
-	else
+	if ((st->host != NULL) && (strcmp ("localhost", st->host) != 0))
 		sstrncpy (vl.host, st->host, sizeof (vl.host));
 
 	sstrncpy (vl.plugin, "openldap", sizeof (vl.plugin));
@@ -192,17 +188,13 @@ static void cldap_submit_value (const char *type, const char *type_instance, /* 
 static void cldap_submit_derive (const char *type, const char *type_instance, /* {{{ */
 		derive_t d, cldap_t *st)
 {
-	value_t v;
-	v.derive = d;
-	cldap_submit_value (type, type_instance, v, st);
+	cldap_submit_value (type, type_instance, (value_t) { .derive = d }, st);
 } /* }}} void cldap_submit_derive */
 
 static void cldap_submit_gauge (const char *type, const char *type_instance, /* {{{ */
 		gauge_t g, cldap_t *st)
 {
-	value_t v;
-	v.gauge = g;
-	cldap_submit_value (type, type_instance, v, st);
+	cldap_submit_value (type, type_instance, (value_t) { .gauge = g }, st);
 } /* }}} void cldap_submit_gauge */
 
 static int cldap_read_host (user_data_t *ud) /* {{{ */

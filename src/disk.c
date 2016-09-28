@@ -297,15 +297,14 @@ static void disk_submit (const char *plugin_instance,
 		const char *type,
 		derive_t read, derive_t write)
 {
-	value_t values[2];
 	value_list_t vl = VALUE_LIST_INIT;
-
-	values[0].derive = read;
-	values[1].derive = write;
+	value_t values[] = {
+		{ .derive = read },
+		{ .derive = write },
+	};
 
 	vl.values = values;
-	vl.values_len = 2;
-	sstrncpy (vl.host, hostname_g, sizeof (vl.host));
+	vl.values_len = STATIC_ARRAY_SIZE (values);
 	sstrncpy (vl.plugin, "disk", sizeof (vl.plugin));
 	sstrncpy (vl.plugin_instance, plugin_instance,
 			sizeof (vl.plugin_instance));
@@ -317,15 +316,14 @@ static void disk_submit (const char *plugin_instance,
 #if KERNEL_FREEBSD || KERNEL_LINUX
 static void submit_io_time (char const *plugin_instance, derive_t io_time, derive_t weighted_time)
 {
-	value_t values[2];
 	value_list_t vl = VALUE_LIST_INIT;
-
-	values[0].derive = io_time;
-	values[1].derive = weighted_time;
+	value_t values[] = {
+		{ .derive = io_time },
+		{ .derive = weighted_time },
+	};
 
 	vl.values = values;
-	vl.values_len = 2;
-	sstrncpy (vl.host, hostname_g, sizeof (vl.host));
+	vl.values_len = STATIC_ARRAY_SIZE (values);
 	sstrncpy (vl.plugin, "disk", sizeof (vl.plugin));
 	sstrncpy (vl.plugin_instance, plugin_instance, sizeof (vl.plugin_instance));
 	sstrncpy (vl.type, "disk_io_time", sizeof (vl.type));
@@ -337,21 +335,16 @@ static void submit_io_time (char const *plugin_instance, derive_t io_time, deriv
 #if KERNEL_LINUX
 static void submit_in_progress (char const *disk_name, gauge_t in_progress)
 {
-	value_t v;
 	value_list_t vl = VALUE_LIST_INIT;
 
-	v.gauge = in_progress;
-
-	vl.values = &v;
+	vl.values = &(value_t) { .gauge = in_progress };
 	vl.values_len = 1;
-	sstrncpy (vl.host, hostname_g, sizeof (vl.host));
 	sstrncpy (vl.plugin, "disk", sizeof (vl.plugin));
 	sstrncpy (vl.plugin_instance, disk_name, sizeof (vl.plugin_instance));
 	sstrncpy (vl.type, "pending_operations", sizeof (vl.type));
 
 	plugin_dispatch_values (&vl);
 }
-
 
 static counter_t disk_calc_time_incr (counter_t delta_time, counter_t delta_ops)
 {

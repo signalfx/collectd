@@ -94,13 +94,10 @@ static int varnish_submit (const char *plugin_instance, /* {{{ */
 	vl.values = &value;
 	vl.values_len = 1;
 
-	sstrncpy (vl.host, hostname_g, sizeof (vl.host));
-
 	sstrncpy (vl.plugin, "varnish", sizeof (vl.plugin));
 
 	if (plugin_instance == NULL)
 		plugin_instance = "default";
-
 	ssnprintf (vl.plugin_instance, sizeof (vl.plugin_instance),
 		"%s-%s", plugin_instance, category);
 
@@ -117,22 +114,16 @@ static int varnish_submit_gauge (const char *plugin_instance, /* {{{ */
 		const char *category, const char *type, const char *type_instance,
 		uint64_t gauge_value)
 {
-	value_t value;
-
-	value.gauge = (gauge_t) gauge_value;
-
-	return (varnish_submit (plugin_instance, category, type, type_instance, value));
+	return (varnish_submit (plugin_instance, category, type, type_instance,
+				(value_t) { .gauge = (gauge_t) gauge_value }));
 } /* }}} int varnish_submit_gauge */
 
 static int varnish_submit_derive (const char *plugin_instance, /* {{{ */
 		const char *category, const char *type, const char *type_instance,
 		uint64_t derive_value)
 {
-	value_t value;
-
-	value.derive = (derive_t) derive_value;
-
-	return (varnish_submit (plugin_instance, category, type, type_instance, value));
+	return (varnish_submit (plugin_instance, category, type, type_instance,
+				(value_t) { .derive = (derive_t) derive_value }));
 } /* }}} int varnish_submit_derive */
 
 #if HAVE_VARNISH_V3 || HAVE_VARNISH_V4

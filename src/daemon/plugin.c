@@ -151,34 +151,28 @@ static const char *plugin_get_dir (void)
 }
 
 static void plugin_update_internal_statistics (void) { /* {{{ */
-	derive_t copy_write_queue_length;
-	value_list_t vl = VALUE_LIST_INIT;
-	value_t values[2];
 
-	copy_write_queue_length = write_queue_length;
+	gauge_t copy_write_queue_length = (gauge_t) write_queue_length;
 
 	/* Initialize `vl' */
-	vl.values = values;
-	vl.values_len = 2;
-	vl.time = 0;
+	value_list_t vl = VALUE_LIST_INIT;
 	sstrncpy (vl.host, hostname_g, sizeof (vl.host));
 	sstrncpy (vl.plugin, "collectd", sizeof (vl.plugin));
-
-	vl.type_instance[0] = 0;
-	vl.values_len = 1;
 
 	/* Write queue */
 	sstrncpy (vl.plugin_instance, "write_queue",
 			sizeof (vl.plugin_instance));
 
 	/* Write queue : queue length */
-	vl.values[0].gauge = (gauge_t) copy_write_queue_length;
+	vl.values = &(value_t) { .gauge = copy_write_queue_length };
+	vl.values_len = 1;
 	sstrncpy (vl.type, "queue_length", sizeof (vl.type));
 	vl.type_instance[0] = 0;
 	plugin_dispatch_values (&vl);
 
 	/* Write queue : Values dropped (queue length > low limit) */
-	vl.values[0].derive = (derive_t) stats_values_dropped;
+	vl.values = &(value_t) { .gauge = (gauge_t) stats_values_dropped };
+	vl.values_len = 1;
 	sstrncpy (vl.type, "derive", sizeof (vl.type));
 	sstrncpy (vl.type_instance, "dropped", sizeof (vl.type_instance));
 	plugin_dispatch_values (&vl);
@@ -188,7 +182,8 @@ static void plugin_update_internal_statistics (void) { /* {{{ */
 			sizeof (vl.plugin_instance));
 
 	/* Cache : Nb entry in cache tree */
-	vl.values[0].gauge = (gauge_t) uc_get_size();
+	vl.values = &(value_t) { .gauge = (gauge_t) uc_get_size() };
+	vl.values_len = 1;
 	sstrncpy (vl.type, "cache_size", sizeof (vl.type));
 	vl.type_instance[0] = 0;
 	plugin_dispatch_values (&vl);
@@ -365,7 +360,7 @@ static void log_list_callbacks (llist_t **list, /* {{{ */
 } /* }}} void log_list_callbacks */
 
 static int create_register_callback (llist_t **list, /* {{{ */
-		const char *name, void *callback, user_data_t *ud)
+		const char *name, void *callback, user_data_t const *ud)
 {
 	callback_func_t *cf;
 
@@ -727,6 +722,9 @@ static value_list_t *plugin_value_list_clone (value_list_t const *vl_orig) /* {{
 	if (vl == NULL)
 		return (NULL);
 	memcpy (vl, vl_orig, sizeof (*vl));
+
+	if (vl->host[0] == 0)
+		sstrncpy (vl->host, hostname_g, sizeof (vl->host));
 
 	vl->values = calloc (vl_orig->values_len, sizeof (*vl->values));
 	if (vl->values == NULL)
@@ -1266,7 +1264,7 @@ int plugin_register_read (const char *name,
 int plugin_register_complex_read (const char *group, const char *name,
 		plugin_read_cb callback,
 		cdtime_t interval,
-		user_data_t *user_data)
+		user_data_t const *user_data)
 {
 	read_func_t *rf;
 	int status;
@@ -1310,7 +1308,7 @@ int plugin_register_complex_read (const char *group, const char *name,
 } /* int plugin_register_complex_read */
 
 int plugin_register_write (const char *name,
-		plugin_write_cb callback, user_data_t *ud)
+		plugin_write_cb callback, user_data_t const *ud)
 {
 	return (create_register_callback (&list_write, name,
 				(void *) callback, ud));
@@ -1357,7 +1355,7 @@ static char *plugin_flush_callback_name (const char *name)
 } /* static char *plugin_flush_callback_name */
 
 int plugin_register_flush (const char *name,
-		plugin_flush_cb callback, user_data_t *ud)
+		plugin_flush_cb callback, user_data_t const *ud)
 {
 	int status;
 	plugin_ctx_t ctx = plugin_get_ctx ();
@@ -1394,15 +1392,15 @@ int plugin_register_flush (const char *name,
 		}
 		cb->timeout = ctx.flush_timeout;
 
-		ud->data = cb;
-		ud->free_func = plugin_flush_timeout_callback_free;
-
 		status = plugin_register_complex_read (
 			/* group     = */ "flush",
 			/* name      = */ flush_name,
 			/* callback  = */ plugin_flush_timeout_callback,
 			/* interval  = */ ctx.flush_interval,
-			/* user data = */ ud);
+			/* user data = */ &(user_data_t) {
+				.data = cb,
+				.free_func = plugin_flush_timeout_callback_free,
+			});
 
 		sfree (flush_name);
 		if (status != 0)
@@ -1417,7 +1415,7 @@ int plugin_register_flush (const char *name,
 } /* int plugin_register_flush */
 
 int plugin_register_missing (const char *name,
-		plugin_missing_cb callback, user_data_t *ud)
+		plugin_missing_cb callback, user_data_t const *ud)
 {
 	return (create_register_callback (&list_missing, name,
 				(void *) callback, ud));
@@ -1488,14 +1486,14 @@ int plugin_register_data_set (const data_set_t *ds)
 } /* int plugin_register_data_set */
 
 int plugin_register_log (const char *name,
-		plugin_log_cb callback, user_data_t *ud)
+		plugin_log_cb callback, user_data_t const *ud)
 {
 	return (create_register_callback (&list_log, name,
 				(void *) callback, ud));
 } /* int plugin_register_log */
 
 int plugin_register_notification (const char *name,
-		plugin_notification_cb callback, user_data_t *ud)
+		plugin_notification_cb callback, user_data_t const *ud)
 {
 	return (create_register_callback (&list_notification, name,
 				(void *) callback, ud));
@@ -2083,15 +2081,16 @@ static int plugin_dispatch_values_internal (value_list_t *vl)
 	int status;
 	static c_complain_t no_write_complaint = C_COMPLAIN_INIT_STATIC;
 
-	value_t *saved_values;
-	int      saved_values_len;
-
 	data_set_t *ds;
 
-	int free_meta_data = 0;
+	_Bool free_meta_data = 0;
 
-	assert(vl);
-	assert(vl->plugin);
+	assert (vl != NULL);
+
+	/* These fields are initialized by plugin_value_list_clone() if needed: */
+	assert (vl->host[0] != 0);
+	assert (vl->time != 0); /* The time is determined at _enqueue_ time. */
+	assert (vl->interval != 0);
 
 	if (vl->type[0] == 0 || vl->values == NULL || vl->values_len < 1)
 	{
@@ -2131,11 +2130,6 @@ static int plugin_dispatch_values_internal (value_list_t *vl)
 		return (-1);
 	}
 
-	/* Assured by plugin_value_list_clone(). The time is determined at
-	 * _enqueue_ time. */
-	assert (vl->time != 0);
-	assert (vl->interval != 0);
-
 	DEBUG ("plugin_dispatch_values: time = %.3f; interval = %.3f; "
 			"host = %s; "
 			"plugin = %s; plugin_instance = %s; "
@@ -2173,31 +2167,6 @@ static int plugin_dispatch_values_internal (value_list_t *vl)
 	escape_slashes (vl->type, sizeof (vl->type));
 	escape_slashes (vl->type_instance, sizeof (vl->type_instance));
 
-	/* Copy the values. This way, we can assure `targets' that they get
-	 * dynamically allocated values, which they can free and replace if
-	 * they like. */
-	if ((pre_cache_chain != NULL) || (post_cache_chain != NULL))
-	{
-		saved_values     = vl->values;
-		saved_values_len = vl->values_len;
-
-		vl->values = (value_t *) calloc (vl->values_len,
-				sizeof (*vl->values));
-		if (vl->values == NULL)
-		{
-			ERROR ("plugin_dispatch_values: calloc failed.");
-			vl->values = saved_values;
-			return (-1);
-		}
-		memcpy (vl->values, saved_values,
-				vl->values_len * sizeof (*vl->values));
-	}
-	else /* if ((pre == NULL) && (post == NULL)) */
-	{
-		saved_values     = NULL;
-		saved_values_len = 0;
-	}
-
 	if (pre_cache_chain != NULL)
 	{
 		status = fc_process_chain (ds, vl, pre_cache_chain);
@@ -2209,17 +2178,7 @@ static int plugin_dispatch_values_internal (value_list_t *vl)
 					status, status);
 		}
 		else if (status == FC_TARGET_STOP)
-		{
-			/* Restore the state of the value_list so that plugins
-			 * don't get confused.. */
-			if (saved_values != NULL)
-			{
-				sfree (vl->values);
-				vl->values     = saved_values;
-				vl->values_len = saved_values_len;
-			}
 			return (0);
-		}
 	}
 
 	/* Update the value cache */
@@ -2238,15 +2197,6 @@ static int plugin_dispatch_values_internal (value_list_t *vl)
 	}
 	else
 		fc_default_action (ds, vl);
-
-	/* Restore the state of the value_list so that plugins don't get
-	 * confused.. */
-	if (saved_values != NULL)
-	{
-		sfree (vl->values);
-		vl->values     = saved_values;
-		vl->values_len = saved_values_len;
-	}
 
 	if ((free_meta_data != 0) && (vl->meta != NULL))
 	{

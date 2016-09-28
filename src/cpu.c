@@ -162,6 +162,12 @@ static int maxcpu;
 /* #endif  HAVE_LIBSTATGRAB */
 
 #elif defined(HAVE_PERFSTAT)
+#define TOTAL_IDLE 0
+#define TOTAL_USER 1
+#define TOTAL_SYS 2
+#define TOTAL_WAIT 3
+#define TOTAL_STAT_NUM 4
+static value_to_rate_state_t total_conv[TOTAL_STAT_NUM];
 static perfstat_cpu_t *perfcpu;
 static int numcpu;
 static int pnumcpu;
@@ -325,15 +331,11 @@ static int init (void)
 
 static void submit_value (int cpu_num, int cpu_state, const char *type, value_t value)
 {
-	value_t values[1];
 	value_list_t vl = VALUE_LIST_INIT;
 
-	memcpy(&values[0], &value, sizeof(value));
-
-	vl.values = values;
+	vl.values = &value;
 	vl.values_len = 1;
 
-	sstrncpy (vl.host, hostname_g, sizeof (vl.host));
 	sstrncpy (vl.plugin, "cpu", sizeof (vl.plugin));
 	sstrncpy (vl.type, type, sizeof (vl.type));
 	sstrncpy (vl.type_instance, cpu_state_names[cpu_state],
@@ -346,26 +348,22 @@ static void submit_value (int cpu_num, int cpu_state, const char *type, value_t 
 	plugin_dispatch_values (&vl);
 }
 
-static void submit_percent(int cpu_num, int cpu_state, gauge_t percent)
+static void submit_percent (int cpu_num, int cpu_state, gauge_t value)
 {
-	value_t value;
-
 	/* This function is called for all known CPU states, but each read
 	 * method will only report a subset. The remaining states are left as
 	 * NAN and we ignore them here. */
-	if (isnan (percent))
+	if (isnan (value))
 		return;
 
-	value.gauge = percent;
-	submit_value (cpu_num, cpu_state, "percent", value);
+	submit_value (cpu_num, cpu_state, "percent",
+			(value_t) { .gauge = value });
 }
 
-static void submit_derive(int cpu_num, int cpu_state, derive_t derive)
+static void submit_derive (int cpu_num, int cpu_state, derive_t value)
 {
-	value_t value;
-
-	value.derive = derive;
-	submit_value (cpu_num, cpu_state, "cpu", value);
+	submit_value (cpu_num, cpu_state, "cpu",
+			(value_t) { .derive = value });
 }
 
 /* Takes the zero-index number of a CPU and makes sure that the module-global
@@ -406,6 +404,24 @@ static cpu_state_t *get_cpu_state (size_t cpu_num, size_t state) /* {{{ */
 	return (&cpu_states[index]);
 } /* }}} cpu_state_t *get_cpu_state */
 
+#if defined(HAVE_PERFSTAT) /* {{{ */
+/* populate global aggregate cpu rate */
+static int total_rate(gauge_t *sum_by_state, size_t state, derive_t d,
+				          value_to_rate_state_t* conv, cdtime_t now)
+{
+	gauge_t rate = NAN;
+	int status = value_to_rate (&rate, (value_t) { .derive = d }, DS_TYPE_DERIVE, now, conv);
+	if (status != 0)
+		return (status);
+
+	sum_by_state[state] = rate;
+
+	if (state != COLLECTD_CPU_STATE_IDLE)
+		RATE_ADD (sum_by_state[COLLECTD_CPU_STATE_ACTIVE], sum_by_state[state]);
+	return (0);
+}
+#endif /* }}} HAVE_PERFSTAT */
+
 /* Populates the per-CPU COLLECTD_CPU_STATE_ACTIVE rate and the global rate_by_state
  * array. */
 static void aggregate (gauge_t *sum_by_state) /* {{{ */
@@ -434,6 +450,27 @@ static void aggregate (gauge_t *sum_by_state) /* {{{ */
 
 		RATE_ADD (sum_by_state[COLLECTD_CPU_STATE_ACTIVE], this_cpu_states[COLLECTD_CPU_STATE_ACTIVE].rate);
 	}
+
+#if defined(HAVE_PERFSTAT) /* {{{ */
+	cdtime_t now = cdtime ();
+	perfstat_cpu_total_t cputotal = { 0 };
+
+	if (!perfstat_cpu_total(NULL, &cputotal, sizeof(cputotal), 1)) {
+		char errbuf[1024];
+		WARNING ("cpu plugin: perfstat_cpu_total: %s",
+				sstrerror (errno, errbuf, sizeof (errbuf)));
+		return;
+	}
+
+	/* Reset COLLECTD_CPU_STATE_ACTIVE */
+	sum_by_state[COLLECTD_CPU_STATE_ACTIVE] = NAN;
+
+	/* Physical Processor Utilization */
+	total_rate(sum_by_state, COLLECTD_CPU_STATE_IDLE,   (derive_t) cputotal.pidle, &total_conv[TOTAL_IDLE], now);
+	total_rate(sum_by_state, COLLECTD_CPU_STATE_USER,   (derive_t) cputotal.puser, &total_conv[TOTAL_USER], now);
+	total_rate(sum_by_state, COLLECTD_CPU_STATE_SYSTEM, (derive_t) cputotal.psys , &total_conv[TOTAL_SYS],  now);
+	total_rate(sum_by_state, COLLECTD_CPU_STATE_WAIT,   (derive_t) cputotal.pwait, &total_conv[TOTAL_WAIT], now);
+#endif /* }}} HAVE_PERFSTAT */
 } /* }}} void aggregate */
 
 /* Commits (dispatches) the values for one CPU or the global aggregation.
@@ -464,17 +501,13 @@ static void cpu_commit_one (int cpu_num, /* {{{ */
 } /* }}} void cpu_commit_one */
 
 /* Commits the number of cores */
-static void cpu_commit_num_cpu (gauge_t num_cpu) /* {{{ */
+static void cpu_commit_num_cpu (gauge_t value) /* {{{ */
 {
-	value_t values[1];
 	value_list_t vl = VALUE_LIST_INIT;
 
-	values[0].gauge = num_cpu;
-
-	vl.values = values;
+	vl.values = &(value_t) { .gauge = value };
 	vl.values_len = 1;
 
-	sstrncpy (vl.host, hostname_g, sizeof (vl.host));
 	sstrncpy (vl.plugin, "cpu", sizeof (vl.plugin));
 	sstrncpy (vl.type, "count", sizeof (vl.type));
 
@@ -555,7 +588,7 @@ static int cpu_stage (size_t cpu_num, size_t state, derive_t d, cdtime_t now) /*
 	int status;
 	cpu_state_t *s;
 	gauge_t rate = NAN;
-	value_t val = {.derive = d};
+	value_t val = { .derive = d };
 
 	if (state >= COLLECTD_CPU_STATE_ACTIVE)
 		return (EINVAL);

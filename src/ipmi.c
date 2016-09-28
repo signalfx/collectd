@@ -115,7 +115,6 @@ static void sensor_read_handler (ipmi_sensor_t *sensor,
     ipmi_states_t __attribute__((unused)) *states,
     void *user_data)
 {
-  value_t values[1];
   value_list_t vl = VALUE_LIST_INIT;
 
   c_ipmi_sensor_list_t *list_item = (c_ipmi_sensor_list_t *)user_data;
@@ -214,12 +213,9 @@ static void sensor_read_handler (ipmi_sensor_t *sensor,
     return;
   }
 
-  values[0].gauge = value;
-
-  vl.values = values;
+  vl.values = &(value_t) { .gauge = value };
   vl.values_len = 1;
 
-  sstrncpy (vl.host, hostname_g, sizeof (vl.host));
   sstrncpy (vl.plugin, "ipmi", sizeof (vl.plugin));
   sstrncpy (vl.type, list_item->sensor_type, sizeof (vl.type));
   sstrncpy (vl.type_instance, list_item->sensor_name, sizeof (vl.type_instance));

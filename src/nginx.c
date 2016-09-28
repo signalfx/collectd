@@ -210,10 +210,8 @@ static void submit (const char *type, const char *inst, long long value)
     return;
 
   vl.values = values;
-  vl.values_len = 1;
-  sstrncpy (vl.host, hostname_g, sizeof (vl.host));
+  vl.values_len = STATIC_ARRAY_SIZE (values);
   sstrncpy (vl.plugin, "nginx", sizeof (vl.plugin));
-  sstrncpy (vl.plugin_instance, "", sizeof (vl.plugin_instance));
   sstrncpy (vl.type, type, sizeof (vl.type));
 
   if (inst != NULL)

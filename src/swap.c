@@ -194,12 +194,10 @@ static void swap_submit_usage (char const *plugin_instance, /* {{{ */
 		gauge_t used, gauge_t free,
 		char const *other_name, gauge_t other_value)
 {
-	value_t v[1];
 	value_list_t vl = VALUE_LIST_INIT;
 
-	vl.values = v;
-	vl.values_len = STATIC_ARRAY_SIZE (v);
-	sstrncpy (vl.host, hostname_g, sizeof (vl.host));
+	vl.values = &(value_t) { .gauge = NAN };
+	vl.values_len = 1;
 	sstrncpy (vl.plugin, "swap", sizeof (vl.plugin));
 	if (plugin_instance != NULL)
 		sstrncpy (vl.plugin_instance, plugin_instance,
@@ -222,13 +220,9 @@ static void swap_submit_derive (char const *type_instance, /* {{{ */
 		derive_t value)
 {
 	value_list_t vl = VALUE_LIST_INIT;
-	value_t v[1];
 
-	v[0].derive = value;
-
-	vl.values = v;
-	vl.values_len = STATIC_ARRAY_SIZE (v);
-	sstrncpy (vl.host, hostname_g, sizeof (vl.host));
+	vl.values = &(value_t) { .derive = value };
+	vl.values_len = 1;
 	sstrncpy (vl.plugin, "swap", sizeof (vl.plugin));
 	sstrncpy (vl.type, "swap_io", sizeof (vl.type));
 	sstrncpy (vl.type_instance, type_instance, sizeof (vl.type_instance));

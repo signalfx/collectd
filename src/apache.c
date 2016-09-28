@@ -244,7 +244,7 @@ static int config_add (oconfig_item_t *ci)
 		ssnprintf (callback_name, sizeof (callback_name),
 				"apache/%s/%s",
 				(st->host != NULL) ? st->host : hostname_g,
-				(st->name != NULL) ? st->name : "default"),
+				(st->name != NULL) ? st->name : "default");
 
 		status = plugin_register_complex_read (/* group = */ NULL,
 				/* name      = */ callback_name,
@@ -394,8 +394,8 @@ static void submit_value (const char *type, const char *type_instance,
 	vl.values = &value;
 	vl.values_len = 1;
 
-	sstrncpy (vl.host, (st->host != NULL) ? st->host : hostname_g,
-			sizeof (vl.host));
+	if (st->host != NULL)
+		sstrncpy (vl.host, st->host, sizeof (vl.host));
 
 	sstrncpy (vl.plugin, "apache", sizeof (vl.plugin));
 	if (st->name != NULL)
@@ -411,19 +411,15 @@ static void submit_value (const char *type, const char *type_instance,
 } /* void submit_value */
 
 static void submit_derive (const char *type, const char *type_instance,
-		derive_t c, apache_t *st)
+		derive_t d, apache_t *st)
 {
-	value_t v;
-	v.derive = c;
-	submit_value (type, type_instance, v, st);
+	submit_value (type, type_instance, (value_t) { .derive = d }, st);
 } /* void submit_derive */
 
 static void submit_gauge (const char *type, const char *type_instance,
 		gauge_t g, apache_t *st)
 {
-	value_t v;
-	v.gauge = g;
-	submit_value (type, type_instance, v, st);
+	submit_value (type, type_instance, (value_t) { .gauge = g }, st);
 } /* void submit_gauge */
 
 static void submit_scoreboard (char *buf, apache_t *st)
