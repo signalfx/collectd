@@ -1397,7 +1397,7 @@ AC_ARG_WITH(data-max-name-len, [AS_HELP_STRING([--with-data-max-name-len@<:@=VAL
         AC_MSG_ERROR([DATA_MAX_NAME_LEN must be a positive integer -- $withval given])
     fi
 ],
-[   AC_DEFINE(DATA_MAX_NAME_LEN, 128, [Maximum length of data buffers])]
+[   AC_DEFINE(DATA_MAX_NAME_LEN, 1024, [Maximum length of data buffers])]
 )
 # }}}
 
