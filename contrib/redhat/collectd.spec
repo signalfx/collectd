@@ -2512,7 +2512,7 @@ fi
 %doc contrib/
 
 %changelog
-* Mon Sep 19 2016 SignalFx <support+rpm@signalfx.com> 5.6.0-sfx0
+* Mon Oct 03 2016 SignalFx <support+rpm@signalfx.com> 5.6.0-sfx0
 - Package for 5.6.0
 
 * Thu Aug 18 2016 SignalFx <support+rpm@signalfx.com> 5.5.2-sfx0
