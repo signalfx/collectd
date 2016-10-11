@@ -962,6 +962,14 @@ protocols_la_SOURCES = protocols.c
 protocols_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 endif
 
+if BUILD_PLUGIN_INTEL_RDT
+pkglib_LTLIBRARIES += intel_rdt.la
+intel_rdt_la_SOURCES = intel_rdt.c
+intel_rdt_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(BUILD_WITH_LIBPQOS_LDFLAGS)
+intel_rdt_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBPQOS_CPPFLAGS)
+intel_rdt_la_LIBADD = $(BUILD_WITH_LIBPQOS_LIBS)
+endif
+
 if BUILD_PLUGIN_REDIS
 pkglib_LTLIBRARIES += redis.la
 redis_la_SOURCES = redis.c
@@ -1265,7 +1273,6 @@ pkglib_LTLIBRARIES += write_graphite.la
 write_graphite_la_SOURCES = write_graphite.c \
                         utils_format_graphite.c utils_format_graphite.h
 write_graphite_la_LDFLAGS = $(PLUGIN_LDFLAGS)
-write_graphite_la_LIBADD = libformat_json.la
 endif
 
 if BUILD_PLUGIN_WRITE_HTTP
