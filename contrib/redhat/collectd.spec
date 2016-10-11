@@ -226,8 +226,8 @@
 
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
-Version:	5.6.0
-Release:	2%{?dist}
+Version:	5.6.1
+Release:	1%{?dist}
 URL:		https://collectd.org
 Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
 License:	GPLv2
@@ -2512,6 +2512,12 @@ fi
 %doc contrib/
 
 %changelog
+* Wed Oct 12 2016 SignalFx <support+rpm@signalfx.com> 5.6.1-sfx0
+- Package for 5.6.1
+
+* Mon Oct 10 2016 Victor Demonchy <v.demonchy@criteo.com> - 5.6.1-1
+- New upstream version
+
 * Mon Oct 03 2016 SignalFx <support+rpm@signalfx.com> 5.6.0-sfx0
 - Package for 5.6.0
 
@@ -2519,7 +2525,7 @@ fi
 - Package for 5.5.2
 
 * Sun Aug 14 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.6.0-1
-- New PRE-RELEASE version
+- New upstream version
 - New plugins enabled by default: chrony, cpusleep, gps, lua, mqtt, notify_nagios
 - New plugins disabled by default: grpc, xencpu, zone
 

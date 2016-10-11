@@ -1016,7 +1016,8 @@ static int wh_config_node (oconfig_item_t *ci) /* {{{ */
                         callback_name, cb->location);
 
         user_data_t user_data = {
-                .data = cb
+                .data = cb,
+                .free_func = wh_callback_free,
         };
 
         plugin_register_flush (callback_name, wh_flush, &user_data);
