@@ -2512,7 +2512,7 @@ fi
 %doc contrib/
 
 %changelog
-* Wed Oct 12 2016 SignalFx <support+rpm@signalfx.com> 5.6.1-sfx0
+* Mon Oct 17 2016 SignalFx <support+rpm@signalfx.com> 5.6.1-sfx0
 - Package for 5.6.1
 
 * Mon Oct 10 2016 Victor Demonchy <v.demonchy@criteo.com> - 5.6.1-1
