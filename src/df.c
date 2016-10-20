@@ -55,13 +55,15 @@ static const char *config_keys[] =
 	"ReportByDevice",
 	"ReportInodes",
 	"ValuesAbsolute",
-	"ValuesPercentage"
+	"ValuesPercentage",
+	"ChangeRoot"
 };
 static int config_keys_num = STATIC_ARRAY_SIZE (config_keys);
 
 static ignorelist_t *il_device = NULL;
 static ignorelist_t *il_mountpoint = NULL;
 static ignorelist_t *il_fstype = NULL;
+static char *change_root = NULL;
 
 static _Bool by_device = 0;
 static _Bool report_inodes = 0;
@@ -149,6 +151,19 @@ static int df_config (const char *key, const char *value)
 			values_percentage = 1;
 		else
 			values_percentage = 0;
+
+		return (0);
+	}
+	else if (strcasecmp (key, "ChangeRoot") == 0)
+	{
+		if (strlen (value) > 1)
+		{
+			sfree (change_root);
+			change_root = strdup (value + 1);
+			for (int i = 0; i < strlen (change_root); i++)
+				if (change_root[i] == '/')
+					change_root[i] = '-';
+		}
 
 		return (0);
 	}
@@ -280,6 +295,20 @@ static int df_read (void)
 				for (int i = 0; i < len; i++)
 					if (disk_name[i] == '/')
 						disk_name[i] = '-';
+			}
+
+			/* change_root configuration handling */
+			if (change_root != NULL)
+			{
+				if (strncmp(disk_name, change_root, strlen(change_root)) == 0)
+				{
+					if (strlen(disk_name) == strlen(change_root))
+						sstrncpy(disk_name, "root", sizeof (disk_name));
+					else
+						sstrncpy(disk_name, disk_name + strlen (change_root) + 1, sizeof (disk_name));
+				}
+				else
+					continue;
 			}
 		}
 
