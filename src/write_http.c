@@ -114,7 +114,6 @@ static int wh_post_nolock(wh_callback_t *cb, char const *data) /* {{{ */
 {
   int status = 0;
 
-
   curl_easy_setopt(cb->curl, CURLOPT_POSTFIELDS, data);
   status = curl_easy_perform(cb->curl);
 
@@ -278,7 +277,6 @@ static int wh_flush(cdtime_t timeout, /* {{{ */
   cb = user_data->data;
 
   pthread_mutex_lock(&cb->send_lock);
-
 
   if (wh_callback_init(cb) != 0) {
     ERROR("write_http plugin: wh_callback_init failed.");

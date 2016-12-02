@@ -42,8 +42,8 @@
 #include "testing.h"
 #include "utils_format_json.h"
 
+#include <yajl/yajl_common.h>
 #include <yajl/yajl_parse.h>
-
 #if HAVE_YAJL_YAJL_VERSION_H
 #include <yajl/yajl_version.h>
 #endif
@@ -61,8 +61,7 @@ typedef struct {
   size_t expected_labels_num;
 
   label_t *current_label;
-};
-typedef struct test_case_s test_case_t;
+} test_case_t;
 
 #if HAVE_YAJL_V2
 static int test_map_key(void *ctx, unsigned char const *key, size_t key_len)

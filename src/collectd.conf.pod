@@ -139,15 +139,6 @@ defined in this plugin. By default, this is disabled.
 
 Specifies the value of the timeout argument of the flush callback.
 
-=item B<FlushInterval> I<Seconds>
-
-Specifies the the interval, in seconds, to call the flush callback if it's
-defined in this plugin. By default, this is disabled
-
-=item B<FlushTimeout> I<Seconds>
-
-Specifies the value of the timeout argument of the flush callback.
-
 =back
 
 =item B<AutoLoadPlugin> B<false>|B<true>
@@ -8004,6 +7995,14 @@ create output in the I<JavaScript Object Notation> (JSON). When set to KAIROSDB
 
 Defaults to B<Command>.
 
+=item B<Metrics> B<true>|B<false>
+
+Controls whether I<metrics> are POSTed to this location. Defaults to B<true>.
+
+=item B<Notifications> B<false>|B<true>
+
+Controls whether I<notifications> are POSTed to this location. Defaults to B<false>.
+
 =item B<StoreRates> B<true|false>
 
 If set to B<true>, convert counter values to rates. If set to B<false> (the
@@ -8041,17 +8040,6 @@ server. How frequently this happens depends on how much data you are collecting
 and the size of B<BufferSize>. The optimal value to set B<Timeout> to is
 slightly below this interval, which you can estimate by monitoring the network
 traffic between collectd and the HTTP server.
-
-=item B<NotifyLevel> B<OKAY>|B<WARNING>|B<FAILURE>
-
-Controls if this Node should send notifications instead of metrics to the HTTP 
-server. The default behaviour is to send metrics. Less severe notifications 
-always imply sending more severe notifications: Setting this to B<OKAY> means 
-all notifications will be sent to the HTTP server, setting this to B<WARNING> 
-will send B<WARNING> and B<FAILURE> notifications but will dismiss B<OKAY> 
-notifications. Setting this option to B<FAILURE> will only send failures to 
-the HTTP server. Note that Notifications are not buffered but sent every 
-interval.
 
 =back
 

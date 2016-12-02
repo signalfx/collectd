@@ -1,6 +1,6 @@
 /**
  * collectd - src/utils_format_json.c
- * Copyright (C) 2009       Florian octo Forster
+ * Copyright (C) 2009-2015  Florian octo Forster
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -31,7 +31,6 @@
 #include "common.h"
 #include "plugin.h"
 #include "utils_cache.h"
-#include "utils_format_json.h"
 
 #if HAVE_LIBYAJL
 #include <yajl/yajl_common.h>
@@ -609,8 +608,8 @@ static int format_alert(yajl_gen g, notification_t const *n) /* {{{ */
   yajl_gen_map_close(g); /* END alert */
   yajl_gen_array_close(g);
 
-  if (*ret_buffer_free < 3)
-    return (-ENOMEM);
+  return 0;
+} /* }}} format_alert */
 
 /*
  * Format (prometheus/alertmanager v1):
