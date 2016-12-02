@@ -808,7 +808,20 @@ fi
 have_cpuid_h="no"
 AC_CHECK_HEADERS(cpuid.h, [have_cpuid_h="yes"])
 
-AC_CHECK_HEADERS(sys/capability.h)
+have_capability="yes"
+AC_CHECK_HEADERS(sys/capability.h,
+                 [have_capability="yes"],
+                 [have_capability="no (<sys/capability.h> not found)"])
+if test "x$have_capability" = "xyes"; then
+AC_CHECK_LIB(cap, cap_get_bound,
+                 [have_capability="yes"],
+                 [have_capability="no (cap_get_bound() not found)"])
+fi
+if test "x$have_capability" = "xyes"; then
+  AC_DEFINE(HAVE_CAPABILITY, 1, [Define to 1 if you have cap_get_bound() (-lcap).])
+fi
+AM_CONDITIONAL(BUILD_WITH_CAPABILITY, test "x$have_capability" = "xyes")
+
 #
 # Checks for typedefs, structures, and compiler characteristics.
 #
@@ -2558,7 +2571,7 @@ then
 	if test -d "$with_java_home"
 	then
 		AC_MSG_CHECKING([for jni.h])
-		TMPVAR=`find -L "$with_java_home" -name jni.h -type f -exec 'dirname' '{}' ';' 2>/dev/null | head -n 1`
+		TMPVAR=`find -L "$with_java_home" -name jni.h -type f -exec 'dirname' '{}' ';' 2>/dev/null | LC_ALL=C sort | head -n 1`
 		if test "x$TMPVAR" != "x"
 		then
 			AC_MSG_RESULT([found in $TMPVAR])
@@ -2568,7 +2581,7 @@ then
 		fi
 
 		AC_MSG_CHECKING([for jni_md.h])
-		TMPVAR=`find -L "$with_java_home" -name jni_md.h -type f -exec 'dirname' '{}' ';' 2>/dev/null | head -n 1`
+		TMPVAR=`find -L "$with_java_home" -name jni_md.h -type f -exec 'dirname' '{}' ';' 2>/dev/null | LC_ALL=C sort | head -n 1`
 		if test "x$TMPVAR" != "x"
 		then
 			AC_MSG_RESULT([found in $TMPVAR])
@@ -2578,7 +2591,7 @@ then
 		fi
 
 		AC_MSG_CHECKING([for libjvm.so])
-		TMPVAR=`find -L "$with_java_home" -type f \( -name libjvm.so -o -name libjvm.dylib \) -exec 'dirname' '{}' ';' 2>/dev/null | head -n 1`
+		TMPVAR=`find -L "$with_java_home" -type f \( -name libjvm.so -o -name libjvm.dylib \) -exec 'dirname' '{}' ';' 2>/dev/null | LC_ALL=C sort | head -n 1`
 		if test "x$TMPVAR" != "x"
 		then
 			AC_MSG_RESULT([found in $TMPVAR])
@@ -2590,7 +2603,7 @@ then
 		if test "x$JAVAC" = "x"
 		then
 			AC_MSG_CHECKING([for javac])
-			TMPVAR=`find -L "$with_java_home" -name javac -type f 2>/dev/null | head -n 1`
+			TMPVAR=`find -L "$with_java_home" -name javac -type f 2>/dev/null | LC_ALL=C sort | head -n 1`
 			if test "x$TMPVAR" != "x"
 			then
 				JAVAC="$TMPVAR"
@@ -2602,7 +2615,7 @@ then
 		if test "x$JAR" = "x"
 		then
 			AC_MSG_CHECKING([for jar])
-			TMPVAR=`find -L "$with_java_home" -name jar -type f 2>/dev/null | head -n 1`
+			TMPVAR=`find -L "$with_java_home" -name jar -type f 2>/dev/null | LC_ALL=C sort | head -n 1`
 			if test "x$TMPVAR" != "x"
 			then
 				JAR="$TMPVAR"
@@ -2813,15 +2826,15 @@ fi
 
 if test "x$with_liblua" = "xyes"
 then
-  SAVE_CFLAGS="$CFLAGS"
-  CFLAGS="$CFLAGS $LUA_CFLAGS"
+  SAVE_CPPFLAGS="$CPPFLAGS"
+  CPPFLAGS="$CPPFLAGS $LUA_CFLAGS"
 
   AC_CHECK_HEADERS([lua.h lauxlib.h lualib.h],
     [with_liblua="yes"],
     [with_liblua="no (header not found)"]
   )
 
-  CFLAGS="$SAVE_CFLAGS"
+  CPPFLAGS="$SAVE_CPPFLAGS"
 fi
 
 if test "x$with_liblua" = "xyes"
@@ -4366,11 +4379,10 @@ then
   if test "x$with_librdkafka_log_cb" = "xyes"
   then
         AC_DEFINE(HAVE_LIBRDKAFKA_LOG_CB, 1, [Define if librdkafka log facility is present and usable.])
-  fi
-  if test "x$with_librdkafka_logger" = "xyes"
+  else if test "x$with_librdkafka_logger" = "xyes"
   then
         AC_DEFINE(HAVE_LIBRDKAFKA_LOGGER, 1, [Define if librdkafka log facility is present and usable.])
-  fi
+  fi; fi
 fi
 CPPFLAGS="$SAVE_CPPFLAGS"
 LDFLAGS="$SAVE_LDFLAGS"

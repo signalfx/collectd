@@ -220,13 +220,15 @@
 %define with_cpusleep 0
 %define with_gps 0
 %define with_mqtt 0
+%define with_redis 0
 %define with_rrdcached 0
+%define with_write_redis 0
 %define with_xmms 0
 %endif
 
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
-Version:	5.6.1
+Version:	5.6.2
 Release:	1%{?dist}
 URL:		https://collectd.org
 Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
@@ -2512,6 +2514,12 @@ fi
 %doc contrib/
 
 %changelog
+* Wed Dec 07 2016 SignalFx <support+rpm@signalfx.com> 5.6.2-sfx0
+- Package for 5.6.2
+
+* Tue Nov 29 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.6.1-2
+- Disable redis plugin on RHEL < 7, hiredis has been retired from EPEL6
+
 * Mon Oct 17 2016 SignalFx <support+rpm@signalfx.com> 5.6.1-sfx0
 - Package for 5.6.1
 
