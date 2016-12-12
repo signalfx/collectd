@@ -156,10 +156,7 @@ static void cldap_submit_value(const char *type,
   vl.values = &value;
   vl.values_len = 1;
 
-  if ((st->host == NULL) || (strcmp("", st->host) == 0) ||
-      (strcmp("localhost", st->host) == 0))
-    sstrncpy(vl.host, hostname_g, sizeof(vl.host));
-  else
+  if ((st->host != NULL) && (strcmp("localhost", st->host) != 0))
     sstrncpy(vl.host, st->host, sizeof(vl.host));
 
   sstrncpy(vl.plugin, "openldap", sizeof(vl.plugin));
@@ -176,17 +173,13 @@ static void cldap_submit_value(const char *type,
 static void cldap_submit_derive(const char *type,
                                 const char *type_instance, /* {{{ */
                                 derive_t d, cldap_t *st) {
-  value_t v;
-  v.derive = d;
-  cldap_submit_value(type, type_instance, v, st);
+  cldap_submit_value(type, type_instance, (value_t){.derive = d}, st);
 } /* }}} void cldap_submit_derive */
 
 static void cldap_submit_gauge(const char *type,
                                const char *type_instance, /* {{{ */
                                gauge_t g, cldap_t *st) {
-  value_t v;
-  v.gauge = g;
-  cldap_submit_value(type, type_instance, v, st);
+  cldap_submit_value(type, type_instance, (value_t){.gauge = g}, st);
 } /* }}} void cldap_submit_gauge */
 
 static int cldap_read_host(user_data_t *ud) /* {{{ */
@@ -410,7 +403,7 @@ static int cldap_config_add(oconfig_item_t *ci) /* {{{ */
   }
 
   st->starttls = 0;
-  st->timeout = (long)(CDTIME_T_TO_MS(plugin_get_interval()) / 1000);
+  st->timeout = (long)CDTIME_T_TO_TIME_T(plugin_get_interval());
   st->verifyhost = 1;
   st->version = LDAP_VERSION3;
 
@@ -487,13 +480,12 @@ static int cldap_config_add(oconfig_item_t *ci) /* {{{ */
                 (st->host != NULL) ? st->host : hostname_g,
                 (st->name != NULL) ? st->name : "default");
 
-      user_data_t ud = {.data = st};
-
       status = plugin_register_complex_read(/* group = */ NULL,
                                             /* name      = */ callback_name,
                                             /* callback  = */ cldap_read_host,
-                                            /* interval  = */ 0,
-                                            /* user_data = */ &ud);
+                                            /* interval  = */ 0, &(user_data_t){
+                                                                     .data = st,
+                                                                 });
     }
   }
 

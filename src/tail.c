@@ -28,6 +28,7 @@
 
 #include "common.h"
 #include "plugin.h"
+#include "utils_latency_config.h"
 #include "utils_tail_match.h"
 
 /*
@@ -53,6 +54,7 @@ struct ctail_config_match_s {
   char *type;
   char *type_instance;
   cdtime_t interval;
+  latency_config_t latency;
 };
 typedef struct ctail_config_match_s ctail_config_match_t;
 
@@ -67,48 +69,54 @@ static int ctail_config_add_match_dstype(ctail_config_match_t *cm,
     return (-1);
   }
 
-  if (strncasecmp("Gauge", ci->values[0].value.string, strlen("Gauge")) == 0) {
+  char const *ds_type = ci->values[0].value.string;
+  if (strncasecmp("Gauge", ds_type, strlen("Gauge")) == 0) {
     cm->flags = UTILS_MATCH_DS_TYPE_GAUGE;
-    if (strcasecmp("GaugeAverage", ci->values[0].value.string) == 0)
+    if (strcasecmp("GaugeAverage", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_GAUGE_AVERAGE;
-    else if (strcasecmp("GaugeMin", ci->values[0].value.string) == 0)
+    else if (strcasecmp("GaugeMin", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_GAUGE_MIN;
-    else if (strcasecmp("GaugeMax", ci->values[0].value.string) == 0)
+    else if (strcasecmp("GaugeMax", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_GAUGE_MAX;
-    else if (strcasecmp("GaugeLast", ci->values[0].value.string) == 0)
+    else if (strcasecmp("GaugeLast", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_GAUGE_LAST;
-    else if (strcasecmp("GaugeInc", ci->values[0].value.string) == 0)
+    else if (strcasecmp("GaugeInc", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_GAUGE_INC;
-    else if (strcasecmp("GaugeAdd", ci->values[0].value.string) == 0)
+    else if (strcasecmp("GaugeAdd", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_GAUGE_ADD;
+    else if (strcasecmp("GaugePersist", ci->values[0].value.string) == 0)
+      cm->flags |= UTILS_MATCH_CF_GAUGE_PERSIST;
     else
       cm->flags = 0;
-  } else if (strncasecmp("Counter", ci->values[0].value.string,
-                         strlen("Counter")) == 0) {
+  } else if (strcasecmp("Distribution", ds_type) == 0) {
+    cm->flags = UTILS_MATCH_DS_TYPE_GAUGE | UTILS_MATCH_CF_GAUGE_DIST;
+
+    int status = latency_config(&cm->latency, ci, "tail");
+    if (status != 0)
+      return (status);
+  } else if (strncasecmp("Counter", ds_type, strlen("Counter")) == 0) {
     cm->flags = UTILS_MATCH_DS_TYPE_COUNTER;
-    if (strcasecmp("CounterSet", ci->values[0].value.string) == 0)
+    if (strcasecmp("CounterSet", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_COUNTER_SET;
-    else if (strcasecmp("CounterAdd", ci->values[0].value.string) == 0)
+    else if (strcasecmp("CounterAdd", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_COUNTER_ADD;
-    else if (strcasecmp("CounterInc", ci->values[0].value.string) == 0)
+    else if (strcasecmp("CounterInc", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_COUNTER_INC;
     else
       cm->flags = 0;
-  } else if (strncasecmp("Derive", ci->values[0].value.string,
-                         strlen("Derive")) == 0) {
+  } else if (strncasecmp("Derive", ds_type, strlen("Derive")) == 0) {
     cm->flags = UTILS_MATCH_DS_TYPE_DERIVE;
-    if (strcasecmp("DeriveSet", ci->values[0].value.string) == 0)
+    if (strcasecmp("DeriveSet", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_DERIVE_SET;
-    else if (strcasecmp("DeriveAdd", ci->values[0].value.string) == 0)
+    else if (strcasecmp("DeriveAdd", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_DERIVE_ADD;
-    else if (strcasecmp("DeriveInc", ci->values[0].value.string) == 0)
+    else if (strcasecmp("DeriveInc", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_DERIVE_INC;
     else
       cm->flags = 0;
-  } else if (strncasecmp("Absolute", ci->values[0].value.string,
-                         strlen("Absolute")) == 0) {
+  } else if (strncasecmp("Absolute", ds_type, strlen("Absolute")) == 0) {
     cm->flags = UTILS_MATCH_DS_TYPE_ABSOLUTE;
-    if (strcasecmp("AbsoluteSet", ci->values[0].value.string) == 0)
+    if (strcasecmp("AbsoluteSet", ds_type) == 0)
       cm->flags |= UTILS_MATCH_CF_ABSOLUTE_SET;
     else
       cm->flags = 0;
@@ -181,19 +189,20 @@ static int ctail_config_add_match(cu_tail_match_t *tm,
   } /* while (status == 0) */
 
   if (status == 0) {
-    status = tail_match_add_match_simple(tm, cm.regex, cm.excluderegex,
-                                         cm.flags, "tail", plugin_instance,
-                                         cm.type, cm.type_instance, interval);
+    // TODO(octo): there's nothing "simple" about the latency stuff …
+    status = tail_match_add_match_simple(
+        tm, cm.regex, cm.excluderegex, cm.flags, "tail", plugin_instance,
+        cm.type, cm.type_instance, cm.latency, interval);
 
-    if (status != 0) {
+    if (status != 0)
       ERROR("tail plugin: tail_match_add_match_simple failed.");
-    }
   }
 
   sfree(cm.regex);
   sfree(cm.excluderegex);
   sfree(cm.type);
   sfree(cm.type_instance);
+  latency_config_free(cm.latency);
 
   return (status);
 } /* int ctail_config_add_match */
@@ -302,10 +311,11 @@ static int ctail_init(void) {
   for (size_t i = 0; i < tail_match_list_num; i++) {
     ssnprintf(str, sizeof(str), "tail-%zu", i);
 
-    user_data_t ud = {.data = tail_match_list[i]};
-
     plugin_register_complex_read(NULL, str, ctail_read,
-                                 tail_match_list_intervals[i], &ud);
+                                 tail_match_list_intervals[i],
+                                 &(user_data_t){
+                                     .data = tail_match_list[i],
+                                 });
   }
 
   return (0);

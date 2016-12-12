@@ -81,7 +81,6 @@ static void log_logstash_print(yajl_gen g, int severity,
   struct tm timestamp_tm;
   char timestamp_str[64];
   const unsigned char *buf;
-  time_t tt;
 #if HAVE_YAJL_V2
   size_t len;
 #else
@@ -129,8 +128,7 @@ static void log_logstash_print(yajl_gen g, int severity,
       yajl_gen_status_ok)
     goto err;
 
-  tt = CDTIME_T_TO_TIME_T(timestamp_time);
-  gmtime_r(&tt, &timestamp_tm);
+  gmtime_r(&CDTIME_T_TO_TIME_T(timestamp_time), &timestamp_tm);
 
   /*
    * format time as a UTC ISO 8601 compliant string

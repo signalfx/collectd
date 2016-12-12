@@ -80,7 +80,6 @@ static void logfile_print(const char *msg, int severity,
                           cdtime_t timestamp_time) {
   FILE *fh;
   _Bool do_close = 0;
-  struct tm timestamp_tm;
   char timestamp_str[64];
   char level_str[16] = "";
 
@@ -107,8 +106,8 @@ static void logfile_print(const char *msg, int severity,
   }
 
   if (print_timestamp) {
-    time_t tt = CDTIME_T_TO_TIME_T(timestamp_time);
-    localtime_r(&tt, &timestamp_tm);
+    struct tm timestamp_tm;
+    localtime_r(&CDTIME_T_TO_TIME_T(timestamp_time), &timestamp_tm);
 
     strftime(timestamp_str, sizeof(timestamp_str), "%Y-%m-%d %H:%M:%S",
              &timestamp_tm);

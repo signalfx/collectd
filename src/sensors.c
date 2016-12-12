@@ -424,11 +424,10 @@ static int sensors_shutdown(void) {
 } /* int sensors_shutdown */
 
 static void sensors_submit(const char *plugin_instance, const char *type,
-                           const char *type_instance, double val) {
+                           const char *type_instance, double value) {
   char match_key[1024];
   int status;
 
-  value_t values[1];
   value_list_t vl = VALUE_LIST_INIT;
 
   status = ssnprintf(match_key, sizeof(match_key), "%s/%s-%s", plugin_instance,
@@ -442,12 +441,9 @@ static void sensors_submit(const char *plugin_instance, const char *type,
       return;
   }
 
-  values[0].gauge = val;
-
-  vl.values = values;
+  vl.values = &(value_t){.gauge = value};
   vl.values_len = 1;
 
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "sensors", sizeof(vl.plugin));
   sstrncpy(vl.plugin_instance, plugin_instance, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, type, sizeof(vl.type));

@@ -130,7 +130,7 @@ static const translation_info_t nsstats_translation_table[] = /* {{{ */
         {"ReqBadSIG", "dns_request", "BadSIG"},
         {"ReqTCP", "dns_request", "TCP"},
         /* Rejects */
-        {"AuthQryRej", "dns_reject", "authorative"},
+        {"AuthQryRej", "dns_reject", "authoritative"},
         {"RecQryRej", "dns_reject", "recursive"},
         {"XfrRej", "dns_reject", "transfer"},
         {"UpdateRej", "dns_reject", "update"},
@@ -141,11 +141,11 @@ static const translation_info_t nsstats_translation_table[] = /* {{{ */
         {"RespTSIG", "dns_response", "TSIG"},
         {"RespSIG0", "dns_response", "SIG0"},
         /* Queries */
-        {"QryAuthAns", "dns_query", "authorative"},
+        {"QryAuthAns", "dns_query", "authoritative"},
         {"QryNoauthAns", "dns_query", "nonauth"},
         {"QryReferral", "dns_query", "referral"},
         {"QryRecursion", "dns_query", "recursion"},
-        {"QryDuplicate", "dns_query", "dupliate"},
+        {"QryDuplicate", "dns_query", "duplicate"},
         {"QryDropped", "dns_query", "dropped"},
         {"QryFailure", "dns_query", "failure"},
         /* Response codes */
@@ -155,13 +155,13 @@ static const translation_info_t nsstats_translation_table[] = /* {{{ */
         {"QryFORMERR", "dns_rcode", "tx-FORMERR"},
         {"QryNXDOMAIN", "dns_rcode", "tx-NXDOMAIN"}
 #if 0
-  { "XfrReqDone",      "type", "type_instance"       },
-  { "UpdateReqFwd",    "type", "type_instance"       },
-  { "UpdateRespFwd",   "type", "type_instance"       },
-  { "UpdateFwdFail",   "type", "type_instance"       },
-  { "UpdateDone",      "type", "type_instance"       },
-  { "UpdateFail",      "type", "type_instance"       },
-  { "UpdateBadPrereq", "type", "type_instance"       },
+  { "XfrReqDone",      "type",         "type_instance" },
+  { "UpdateReqFwd",    "type",         "type_instance" },
+  { "UpdateRespFwd",   "type",         "type_instance" },
+  { "UpdateFwdFail",   "type",         "type_instance" },
+  { "UpdateDone",      "type",         "type_instance" },
+  { "UpdateFail",      "type",         "type_instance" },
+  { "UpdateBadPrereq", "type",         "type_instance" },
 #endif
 };
 static int nsstats_translation_table_length =
@@ -238,16 +238,12 @@ static int memsummary_translation_table_length =
 
 static void submit(time_t ts, const char *plugin_instance, /* {{{ */
                    const char *type, const char *type_instance, value_t value) {
-  value_t values[1];
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0] = value;
-
-  vl.values = values;
+  vl.values = &value;
   vl.values_len = 1;
   if (config_parse_time)
     vl.time = TIME_T_TO_CDTIME_T(ts);
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "bind", sizeof(vl.plugin));
   if (plugin_instance) {
     sstrncpy(vl.plugin_instance, plugin_instance, sizeof(vl.plugin_instance));

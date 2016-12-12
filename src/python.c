@@ -718,9 +718,11 @@ static PyObject *cpy_register_generic_userdata(void *reg, void *handler,
   c->data = data;
   c->next = NULL;
 
-  user_data_t user_data = {.data = c, .free_func = cpy_destroy_user_data};
+  register_function(buf, handler,
+                    &(user_data_t){
+                        .data = c, .free_func = cpy_destroy_user_data,
+                    });
 
-  register_function(buf, handler, &user_data);
   ++cpy_num_callbacks;
   return cpy_string_to_unicode_or_bytes(buf);
 }
@@ -757,10 +759,12 @@ static PyObject *cpy_register_read(PyObject *self, PyObject *args,
   c->data = data;
   c->next = NULL;
 
-  user_data_t user_data = {.data = c, .free_func = cpy_destroy_user_data};
-
-  plugin_register_complex_read(/* group = */ "python", buf, cpy_read_callback,
-                               DOUBLE_TO_CDTIME_T(interval), &user_data);
+  plugin_register_complex_read(
+      /* group = */ "python", buf, cpy_read_callback,
+      DOUBLE_TO_CDTIME_T(interval),
+      &(user_data_t){
+          .data = c, .free_func = cpy_destroy_user_data,
+      });
   ++cpy_num_callbacks;
   return cpy_string_to_unicode_or_bytes(buf);
 }
@@ -1094,7 +1098,8 @@ static int cpy_init(void) {
       ERROR("python: Unable to create pipe.");
       return 1;
     }
-    if (plugin_thread_create(&thread, NULL, cpy_interactive, pipefd + 1)) {
+    if (plugin_thread_create(&thread, NULL, cpy_interactive, pipefd + 1,
+                             "python interpreter")) {
       ERROR("python: Error creating thread for interactive interpreter.");
     }
     if (read(pipefd[0], &buf, 1))

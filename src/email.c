@@ -361,8 +361,6 @@ static void *collect(void *arg) {
 } /* static void *collect (void *) */
 
 static void *open_connection(void __attribute__((unused)) * arg) {
-  struct sockaddr_un addr;
-
   const char *path = (NULL == sock_file) ? SOCK_PATH : sock_file;
   const char *group = (NULL == sock_group) ? COLLECTD_GRP_NAME : sock_group;
 
@@ -375,7 +373,9 @@ static void *open_connection(void __attribute__((unused)) * arg) {
     pthread_exit((void *)1);
   }
 
-  addr.sun_family = AF_UNIX;
+  struct sockaddr_un addr = {
+    .sun_family = AF_UNIX
+  };
   sstrncpy(addr.sun_path, path, (size_t)(UNIX_PATH_MAX - 1));
 
   errno = 0;
@@ -448,7 +448,7 @@ static void *open_connection(void __attribute__((unused)) * arg) {
       collectors[i]->socket = NULL;
 
       if (plugin_thread_create(&collectors[i]->thread, &ptattr, collect,
-                               collectors[i]) != 0) {
+                               collectors[i], "email collector") != 0) {
         char errbuf[1024];
         log_err("plugin_thread_create() failed: %s",
                 sstrerror(errno, errbuf, sizeof(errbuf)));
@@ -531,7 +531,8 @@ static void *open_connection(void __attribute__((unused)) * arg) {
 } /* static void *open_connection (void *) */
 
 static int email_init(void) {
-  if (plugin_thread_create(&connector, NULL, open_connection, NULL) != 0) {
+  if (plugin_thread_create(&connector, NULL, open_connection, NULL,
+                           "email listener") != 0) {
     char errbuf[1024];
     disabled = 1;
     log_err("plugin_thread_create() failed: %s",
@@ -613,14 +614,10 @@ static int email_shutdown(void) {
 
 static void email_submit(const char *type, const char *type_instance,
                          gauge_t value) {
-  value_t values[1];
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0].gauge = value;
-
-  vl.values = values;
+  vl.values = &(value_t){.gauge = value};
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "email", sizeof(vl.plugin));
   sstrncpy(vl.type, type, sizeof(vl.type));
   sstrncpy(vl.type_instance, type_instance, sizeof(vl.type_instance));

@@ -27,6 +27,15 @@ noinst_LTLIBRARIES =
 check_PROGRAMS =
 TESTS =
 
+noinst_LTLIBRARIES += libformat_graphite.la
+libformat_graphite_la_SOURCES  = utils_format_graphite.c utils_format_graphite.h
+libformat_graphite_la_CPPFLAGS = $(AM_CPPFLAGS)
+libformat_graphite_la_LDFLAGS  = $(AM_LDFLAGS)
+check_PROGRAMS += test_format_graphite
+TESTS += test_format_graphite
+test_format_graphite_SOURCES = utils_format_graphite_test.c testing.h
+test_format_graphite_LDADD = libformat_graphite.la daemon/libmetadata.la daemon/libplugin_mock.la -lm
+
 noinst_LTLIBRARIES += libformat_json.la
 libformat_json_la_SOURCES   = utils_format_json.c utils_format_json.h
 libformat_json_la_CPPFLAGS  = $(AM_CPPFLAGS)
@@ -43,11 +52,28 @@ test_format_json_LDADD = libformat_json.la daemon/libmetadata.la daemon/libplugi
 endif
 
 noinst_LTLIBRARIES += liblatency.la
-liblatency_la_SOURCES = utils_latency.c utils_latency.h
+liblatency_la_SOURCES = utils_latency.c utils_latency.h utils_latency_config.c utils_latency_config.h
+liblatency_la_LIBADD = daemon/libcommon.la -lm
 check_PROGRAMS += test_utils_latency
 TESTS += test_utils_latency
 test_utils_latency_SOURCES = utils_latency_test.c testing.h
 test_utils_latency_LDADD = liblatency.la daemon/libplugin_mock.la -lm
+
+noinst_LTLIBRARIES += libcmds.la
+libcmds_la_SOURCES = utils_cmds.c utils_cmds.h \
+                     utils_cmd_flush.c utils_cmd_flush.h \
+                     utils_cmd_getthreshold.c utils_cmd_getthreshold.h \
+                     utils_cmd_getval.c utils_cmd_getval.h \
+                     utils_cmd_listval.c utils_cmd_listval.h \
+                     utils_cmd_putnotif.c utils_cmd_putnotif.h \
+                     utils_cmd_putval.c utils_cmd_putval.h \
+                     utils_parse_option.c utils_parse_option.h
+libcmds_la_LIBADD = daemon/libcommon.la daemon/libmetadata.la -lm
+check_PROGRAMS += test_utils_cmds
+TESTS += test_utils_cmds
+test_utils_cmds_SOURCES = utils_cmds_test.c testing.h
+test_utils_cmds_LDADD = libcmds.la \
+                        daemon/libplugin_mock.la
 
 noinst_LTLIBRARIES += liblookup.la
 liblookup_la_SOURCES = utils_vl_lookup.c utils_vl_lookup.h
@@ -214,7 +240,7 @@ endif
 
 if BUILD_PLUGIN_BATTERY
 pkglib_LTLIBRARIES += battery.la
-battery_la_SOURCES = battery.c
+battery_la_SOURCES = battery.c battery_statefs.c
 battery_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 if BUILD_WITH_LIBIOKIT
 battery_la_LDFLAGS += -framework IOKit
@@ -310,10 +336,11 @@ endif
 if BUILD_PLUGIN_CURL
 pkglib_LTLIBRARIES += curl.la
 curl_la_SOURCES = curl.c \
-		  utils_curl_stats.c utils_curl_stats.h
+                  utils_curl_stats.c utils_curl_stats.h \
+                  utils_match.c utils_match.h
 curl_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 curl_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBCURL_CFLAGS)
-curl_la_LIBADD = $(BUILD_WITH_LIBCURL_LIBS)
+curl_la_LIBADD = $(BUILD_WITH_LIBCURL_LIBS) liblatency.la
 endif
 
 if BUILD_PLUGIN_CURL_JSON
@@ -391,6 +418,14 @@ dns_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 dns_la_LIBADD = -lpcap
 endif
 
+if BUILD_PLUGIN_DPDKSTAT
+pkglib_LTLIBRARIES += dpdkstat.la
+dpdkstat_la_SOURCES = dpdkstat.c
+dpdkstat_la_CPPFLAGS = $(AM_CPPFLAGS) $(LIBDPDK_CPPFLAGS)
+dpdkstat_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(LIBDPDK_LDFLAGS)
+dpdkstat_la_LIBADD = -ldpdk
+endif
+
 if BUILD_PLUGIN_DRBD
 pkglib_LTLIBRARIES += drbd.la
 drbd_la_SOURCES = drbd.c
@@ -411,11 +446,8 @@ endif
 
 if BUILD_PLUGIN_EXEC
 pkglib_LTLIBRARIES += exec.la
-exec_la_SOURCES = exec.c \
-		  utils_cmd_putnotif.c utils_cmd_putnotif.h \
-		  utils_cmd_putval.c utils_cmd_putval.h \
-		  utils_parse_option.h utils_parse_option.c
-exec_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+exec_la_SOURCES = exec.c
+exec_la_LDFLAGS = $(PLUGIN_LDFLAGS) libcmds.la
 endif
 
 if BUILD_PLUGIN_ETHSTAT
@@ -469,6 +501,12 @@ hddtemp_la_LIBADD =
 if BUILD_WITH_LIBSOCKET
 hddtemp_la_LIBADD += -lsocket
 endif
+endif
+
+if BUILD_PLUGIN_HUGEPAGES
+pkglib_LTLIBRARIES += hugepages.la
+hugepages_la_SOURCES = hugepages.c
+hugepages_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 endif
 
 if BUILD_PLUGIN_INTERFACE
@@ -647,10 +685,11 @@ endif
 
 if BUILD_PLUGIN_MEMCACHEC
 pkglib_LTLIBRARIES += memcachec.la
-memcachec_la_SOURCES = memcachec.c
+memcachec_la_SOURCES = memcachec.c \
+                       utils_match.c utils_match.h
 memcachec_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(BUILD_WITH_LIBMEMCACHED_LDFLAGS)
 memcachec_la_CPPFLAGS = $(AM_CPPFLAGS) $(BUILD_WITH_LIBMEMCACHED_CPPFLAGS)
-memcachec_la_LIBADD = $(BUILD_WITH_LIBMEMCACHED_LIBS)
+memcachec_la_LIBADD = $(BUILD_WITH_LIBMEMCACHED_LIBS) liblatency.la
 endif
 
 if BUILD_PLUGIN_MEMCACHED
@@ -949,6 +988,14 @@ protocols_la_SOURCES = protocols.c
 protocols_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 endif
 
+if BUILD_PLUGIN_INTEL_RDT
+pkglib_LTLIBRARIES += intel_rdt.la
+intel_rdt_la_SOURCES = intel_rdt.c
+intel_rdt_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(BUILD_WITH_LIBPQOS_LDFLAGS)
+intel_rdt_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBPQOS_CPPFLAGS)
+intel_rdt_la_LIBADD = $(BUILD_WITH_LIBPQOS_LIBS)
+endif
+
 if BUILD_PLUGIN_REDIS
 pkglib_LTLIBRARIES += redis.la
 redis_la_SOURCES = redis.c
@@ -1025,7 +1072,7 @@ if BUILD_PLUGIN_STATSD
 pkglib_LTLIBRARIES += statsd.la
 statsd_la_SOURCES = statsd.c
 statsd_la_LDFLAGS = $(PLUGIN_LDFLAGS)
-statsd_la_LIBADD = liblatency.la -lm
+statsd_la_LIBADD = liblatency.la
 endif
 
 if BUILD_PLUGIN_SWAP
@@ -1067,13 +1114,18 @@ endif
 
 if BUILD_PLUGIN_TAIL
 pkglib_LTLIBRARIES += tail.la
-tail_la_SOURCES = tail.c
+tail_la_SOURCES = tail.c \
+                  utils_match.c utils_match.h \
+                  utils_tail.c utils_tail.h \
+                  utils_tail_match.c utils_tail_match.h
 tail_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+tail_la_LIBADD = liblatency.la
 endif
 
 if BUILD_PLUGIN_TAIL_CSV
 pkglib_LTLIBRARIES += tail_csv.la
-tail_csv_la_SOURCES = tail_csv.c
+tail_csv_la_SOURCES = tail_csv.c \
+                      utils_tail.c utils_tail.h
 tail_csv_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 endif
 
@@ -1167,15 +1219,8 @@ endif
 
 if BUILD_PLUGIN_UNIXSOCK
 pkglib_LTLIBRARIES += unixsock.la
-unixsock_la_SOURCES = unixsock.c \
-		      utils_cmd_flush.h utils_cmd_flush.c \
-		      utils_cmd_getval.h utils_cmd_getval.c \
-		      utils_cmd_getthreshold.h utils_cmd_getthreshold.c \
-		      utils_cmd_listval.h utils_cmd_listval.c \
-		      utils_cmd_putval.h utils_cmd_putval.c \
-		      utils_cmd_putnotif.h utils_cmd_putnotif.c \
-		      utils_parse_option.h utils_parse_option.c
-unixsock_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+unixsock_la_SOURCES = unixsock.c
+unixsock_la_LDFLAGS = $(PLUGIN_LDFLAGS) libcmds.la
 endif
 
 if BUILD_PLUGIN_UPTIME
@@ -1249,10 +1294,9 @@ endif
 
 if BUILD_PLUGIN_WRITE_GRAPHITE
 pkglib_LTLIBRARIES += write_graphite.la
-write_graphite_la_SOURCES = write_graphite.c \
-                        utils_format_graphite.c utils_format_graphite.h \
-						utils_format_json.c utils_format_json.h
+write_graphite_la_SOURCES = write_graphite.c
 write_graphite_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+write_graphite_la_LIBADD = libformat_graphite.la
 endif
 
 if BUILD_PLUGIN_WRITE_HTTP
@@ -1279,9 +1323,9 @@ endif
 
 if BUILD_PLUGIN_WRITE_LOG
 pkglib_LTLIBRARIES += write_log.la
-write_log_la_SOURCES = write_log.c \
-                        utils_format_graphite.c utils_format_graphite.h
+write_log_la_SOURCES = write_log.c
 write_log_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+write_log_la_LIBADD = libformat_graphite.la libformat_json.la
 endif
 
 if BUILD_PLUGIN_WRITE_MONGODB
@@ -1290,6 +1334,15 @@ write_mongodb_la_SOURCES = write_mongodb.c
 write_mongodb_la_CPPFLAGS = $(AM_CPPFLAGS) $(BUILD_WITH_LIBMONGOC_CPPFLAGS)
 write_mongodb_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(BUILD_WITH_LIBMONGOC_LDFLAGS)
 write_mongodb_la_LIBADD = -lmongoc
+endif
+
+if BUILD_PLUGIN_WRITE_PROMETHEUS
+pkglib_LTLIBRARIES += write_prometheus.la
+write_prometheus_la_SOURCES = write_prometheus.c
+nodist_write_prometheus_la_SOURCES = prometheus.pb-c.c prometheus.pb-c.h
+write_prometheus_la_CPPFLAGS = $(AM_CPPFLAGS) $(BUILD_WITH_LIBPROTOBUF_C_CPPFLAGS) $(BUILD_WITH_LIBMICROHTTPD_CPPFLAGS)
+write_prometheus_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(BUILD_WITH_LIBPROTOBUF_C_LDFLAGS) $(BUILD_WITH_LIBMICROHTTPD_LDFLAGS)
+write_prometheus_la_LIBADD = $(BUILD_WITH_LIBPROTOBUF_C_LIBS) $(BUILD_WITH_LIBMICROHTTPD_LIBS)
 endif
 
 if BUILD_PLUGIN_WRITE_REDIS
@@ -1432,6 +1485,15 @@ BUILT_SOURCES += pinba.pb-c.c pinba.pb-c.h
 
 pinba.pb-c.c pinba.pb-c.h: pinba.proto
 	$(AM_V_PROTOC_C)$(PROTOC_C) -I$(srcdir) --c_out . $(srcdir)/pinba.proto
+endif
+
+# Protocol buffer for the "write_prometheus" plugin.
+if BUILD_PLUGIN_WRITE_PROMETHEUS
+CLEANFILES += prometheus.pb-c.c prometheus.pb-c.h
+BUILT_SOURCES += prometheus.pb-c.c prometheus.pb-c.h
+
+prometheus.pb-c.c prometheus.pb-c.h: $(top_srcdir)/proto/prometheus.proto
+	$(AM_V_PROTOC_C)$(PROTOC_C) -I$(top_srcdir)/proto --c_out=$(builddir) $(top_srcdir)/proto/prometheus.proto
 endif
 
 install-exec-hook:

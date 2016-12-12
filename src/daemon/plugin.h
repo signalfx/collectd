@@ -83,6 +83,15 @@
 /*
  * Public data types
  */
+struct identifier_s {
+  char *host;
+  char *plugin;
+  char *plugin_instance;
+  char *type;
+  char *type_instance;
+};
+typedef struct identifier_s identifier_t;
+
 typedef unsigned long long counter_t;
 typedef double gauge_t;
 typedef int64_t derive_t;
@@ -111,9 +120,7 @@ struct value_list_s {
 typedef struct value_list_s value_list_t;
 
 #define VALUE_LIST_INIT                                                        \
-  { NULL, 0, 0, plugin_get_interval(), "localhost", "", "", "", "", NULL }
-#define VALUE_LIST_STATIC                                                      \
-  { NULL, 0, 0, 0, "localhost", "", "", "", "", NULL }
+  { .values = NULL, .meta = NULL }
 
 struct data_source_s {
   char name[DATA_MAX_NAME_LEN];
@@ -440,7 +447,8 @@ cdtime_t plugin_get_interval(void);
  */
 
 int plugin_thread_create(pthread_t *thread, const pthread_attr_t *attr,
-                         void *(*start_routine)(void *), void *arg);
+                         void *(*start_routine)(void *), void *arg,
+                         char const *name);
 
 /*
  * Plugins need to implement this

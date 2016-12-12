@@ -242,27 +242,15 @@ static int dns_run_pcap_loop(void) {
 
 static int dns_sleep_one_interval(void) /* {{{ */
 {
-  cdtime_t interval;
-  struct timespec ts = {0, 0};
-  int status = 0;
-
-  interval = plugin_get_interval();
-  CDTIME_T_TO_TIMESPEC(interval, &ts);
-
-  while (42) {
-    struct timespec rem = {0, 0};
-
-    status = nanosleep(&ts, &rem);
-    if (status == 0)
-      break;
-    else if ((errno == EINTR) || (errno == EAGAIN)) {
-      ts = rem;
+  struct timespec ts = CDTIME_T_TO_TIMESPEC(plugin_get_interval());
+  while (nanosleep(&ts, &ts) != 0) {
+    if ((errno == EINTR) || (errno == EAGAIN))
       continue;
-    } else
-      break;
+
+    return (errno);
   }
 
-  return (status);
+  return (0);
 } /* }}} int dns_sleep_one_interval */
 
 static void *dns_child_loop(__attribute__((unused)) void *dummy) /* {{{ */
@@ -296,8 +284,8 @@ static int dns_init(void) {
   if (listen_thread_init != 0)
     return (-1);
 
-  status =
-      plugin_thread_create(&listen_thread, NULL, dns_child_loop, (void *)0);
+  status = plugin_thread_create(&listen_thread, NULL, dns_child_loop, (void *)0,
+                                "dns listen");
   if (status != 0) {
     char errbuf[1024];
     ERROR("dns plugin: pthread_create failed: %s",
@@ -325,14 +313,10 @@ static int dns_init(void) {
 
 static void submit_derive(const char *type, const char *type_instance,
                           derive_t value) {
-  value_t values[1];
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0].derive = value;
-
-  vl.values = values;
+  vl.values = &(value_t){.derive = value};
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "dns", sizeof(vl.plugin));
   sstrncpy(vl.type, type, sizeof(vl.type));
   sstrncpy(vl.type_instance, type_instance, sizeof(vl.type_instance));
@@ -341,15 +325,13 @@ static void submit_derive(const char *type, const char *type_instance,
 } /* void submit_derive */
 
 static void submit_octets(derive_t queries, derive_t responses) {
-  value_t values[2];
+  value_t values[] = {
+      {.derive = queries}, {.derive = responses},
+  };
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0].derive = queries;
-  values[1].derive = responses;
-
   vl.values = values;
-  vl.values_len = 2;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
+  vl.values_len = STATIC_ARRAY_SIZE(values);
   sstrncpy(vl.plugin, "dns", sizeof(vl.plugin));
   sstrncpy(vl.type, "dns_octets", sizeof(vl.type));
 

@@ -73,6 +73,7 @@
 %define with_gmond 0%{!?_without_gmond:1}
 %define with_gps 0%{!?_without_gps:1}
 %define with_hddtemp 0%{!?_without_hddtemp:1}
+%define with_hugepages 0%{!?_without_hugepages:1}
 %define with_interface 0%{!?_without_interface:1}
 %define with_ipc 0%{!?_without_ipc:1}
 %define with_ipmi 0%{!?_without_ipmi:1}
@@ -147,6 +148,7 @@
 %define with_write_graphite 0%{!?_without_write_graphite:1}
 %define with_write_http 0%{!?_without_write_http:1}
 %define with_write_log 0%{!?_without_write_log:1}
+%define with_write_prometheus 0%{!?_without_write_prometheus:1}
 %define with_write_redis 0%{!?_without_write_redis:1}
 %define with_write_sensu 0%{!?_without_write_sensu:1}
 %define with_write_tsdb 0%{!?_without_write_tsdb:1}
@@ -165,8 +167,12 @@
 %define with_barometer 0%{!?_without_barometer:0}
 # plugin grpc disabled, requires protobuf-compiler >= 3.0
 %define with_grpc 0%{!?_without_grpc:0}
+# plugin dpdkstat disabled, requires libdpdk
+%define with_dpdkstat 0%{!?_without_dpdkstat:0}
 # plugin lpar disabled, requires AIX
 %define with_lpar 0%{!?_without_lpar:0}
+# plugin intel_rdt disabled, requires intel-cmt-cat
+%define with_intel_rdt 0%{!?_without_intel_rdt:0}
 # plugin mic disabled, requires Mic
 %define with_mic 0%{!?_without_mic:0}
 # plugin netapp disabled, requires libnetapp
@@ -212,6 +218,7 @@
 %define with_redis 0
 %define with_smart 0
 %define with_turbostat 0
+%define with_write_prometheus 0
 %define with_write_redis 0
 %endif
 
@@ -228,8 +235,8 @@
 
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
-Version:	5.6.2
-Release:	1%{?dist}
+Version:	5.7.0
+Release:	0%{?dist}
 URL:		https://collectd.org
 Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
 License:	GPLv2
@@ -451,6 +458,17 @@ Requires:	%{name}%{?_isa} = %{version}-%{release}, hddtemp
 %description hddtemp
 The HDDTemp plugin collects the temperature of hard disks. The temperatures are
 provided via SMART and queried by the external hddtemp daemon.
+%endif
+
+%if %{with_intel_rdt}
+%package intel_rdt
+Summary:	Intel RDT plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+BuildRequires:	intel-cmt-cat
+%description intel_rdt
+The intel_rdt plugin collects information provided by monitoring features of
+Intel Resource Director Technology (Intel(R) RDT).
 %endif
 
 %if %{with_ipmi}
@@ -814,6 +832,17 @@ BuildRequires: librdkafka-devel
 The write_kafka plugin sends values to kafka, a distributed messaging system.
 %endif
 
+%if %{with_write_prometheus}
+%package write_prometheus
+Summary:	Write-prometheus plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+BuildRequires:	libmicrohttpd-devel
+%description write_prometheus
+The Write Prometheus plugin exposes collected values using an embedded HTTP
+server, turning the collectd daemon into a Prometheus exporter.
+%endif
+
 %if %{with_write_redis}
 %package write_redis
 Summary:	Write-Redis plugin for collectd
@@ -1070,6 +1099,12 @@ Collectd utilities
 %define _with_drbd --disable-drbd
 %endif
 
+%if %{with_dpdkstat}
+%define _with_dpdkstat --enable-dpdkstat
+%else
+%define _with_dpdkstat --disable-dpdkstat
+%endif
+
 %if %{with_email}
 %define _with_email --enable-email
 %else
@@ -1134,6 +1169,18 @@ Collectd utilities
 %define _with_hddtemp --enable-hddtemp
 %else
 %define _with_hddtemp --disable-hddtemp
+%endif
+
+%if %{with_hugepages}
+%define _with_hugepages --enable-hugepages
+%else
+%define _with_hugepages --disable-hugepages
+%endif
+
+%if %{with_intel_rdt}
+%define _with_intel_rdt --enable-intel_rdt
+%else
+%define _with_intel_rdt --disable-intel_rdt
 %endif
 
 %if %{with_interface}
@@ -1657,6 +1704,12 @@ Collectd utilities
 %define _with_write_mongodb --disable-write_mongodb
 %endif
 
+%if %{with_write_prometheus}
+%define _with_write_prometheus --enable-write_prometheus
+%else
+%define _with_write_prometheus --disable-write_prometheus
+%endif
+
 %if %{with_write_redis}
 %define _with_write_redis --enable-write_redis
 %else
@@ -1753,6 +1806,7 @@ Collectd utilities
 	%{?_with_disk} \
 	%{?_with_dns} \
 	%{?_with_drbd} \
+	%{?_with_dpdkstat} \
 	%{?_with_email} \
 	%{?_with_entropy} \
 	%{?_with_ethstat} \
@@ -1764,6 +1818,8 @@ Collectd utilities
 	%{?_with_gps} \
 	%{?_with_grpc} \
 	%{?_with_hddtemp} \
+	%{?_with_hugepages} \
+	%{?_with_intel_rdt} \
 	%{?_with_interface} \
 	%{?_with_ipc} \
 	%{?_with_ipmi} \
@@ -1851,6 +1907,7 @@ Collectd utilities
 	%{?_with_write_kafka} \
 	%{?_with_write_log} \
 	%{?_with_write_mongodb} \
+	%{?_with_write_prometheus} \
 	%{?_with_write_redis} \
 	%{?_with_write_riemann} \
 	%{?_with_write_sensu} \
@@ -2029,6 +2086,9 @@ fi
 %if %{with_drbd}
 %{_libdir}/%{name}/drbd.so
 %endif
+%if %{with_dpdkstat}
+%{_libdir}/%{name}/dpdkstat.so
+%endif
 %if %{with_ethstat}
 %{_libdir}/%{name}/ethstat.so
 %endif
@@ -2046,6 +2106,9 @@ fi
 %endif
 %if %{with_fscache}
 %{_libdir}/%{name}/fscache.so
+%endif
+%if %{with_hugepages}
+%{_libdir}/%{name}/hugepages.so
 %endif
 %if %{with_interface}
 %{_libdir}/%{name}/interface.so
@@ -2306,6 +2369,11 @@ fi
 %{_libdir}/%{name}/hddtemp.so
 %endif
 
+%if %{with_intel_rdt}
+%files intel_rdt
+%{_libdir}/%{name}/intel_rdt.so
+%endif
+
 %if %{with_ipmi}
 %files ipmi
 %{_libdir}/%{name}/ipmi.so
@@ -2482,6 +2550,11 @@ fi
 %{_libdir}/%{name}/write_kafka.so
 %endif
 
+%if %{with_write_prometheus}
+%files write_prometheus
+%{_libdir}/%{name}/write_prometheus.so
+%endif
+
 %if %{with_write_redis}
 %files write_redis
 %{_libdir}/%{name}/write_redis.so
@@ -2514,11 +2587,20 @@ fi
 %doc contrib/
 
 %changelog
-* Wed Dec 07 2016 SignalFx <support+rpm@signalfx.com> 5.6.2-sfx0
-- Package for 5.6.2
+
+* Wed Dec 14 2016 SignalFx <support+rpm@signalfx.com> 5.7.0-sfx0
+- Package for 5.7.0
 
 * Tue Nov 29 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.6.1-2
 - Disable redis plugin on RHEL < 7, hiredis has been retired from EPEL6
+
+* Tue Nov 29 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.0-2
+- Disable redis plugin on RHEL 6, hiredis has been retired from EPEL6
+
+* Mon Oct 10 2016 Marc Fournier <marc.fournier@camptocamp.com> - 5.7.0-1
+- New PRE-RELEASE version
+- New plugins enabled by default: hugepages, write_prometheus
+- New plugins disabled by default: dpdkstat, intel_rdt
 
 * Mon Oct 17 2016 SignalFx <support+rpm@signalfx.com> 5.6.1-sfx0
 - Package for 5.6.1

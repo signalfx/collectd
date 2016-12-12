@@ -77,7 +77,7 @@ static int gr_format_values(char *ret, size_t ret_len, int ds_num,
 }
 
 static void gr_copy_escape_part(char *dst, const char *src, size_t dst_len,
-                                char escape_char) {
+                                char escape_char, _Bool preserve_separator) {
   memset(dst, 0, dst_len);
 
   if (src == NULL)
@@ -89,7 +89,8 @@ static void gr_copy_escape_part(char *dst, const char *src, size_t dst_len,
       break;
     }
 
-    if ((src[i] == '.') || isspace((int)src[i]) || iscntrl((int)src[i]))
+    if ((!preserve_separator && (src[i] == '.')) || isspace((int)src[i]) ||
+        iscntrl((int)src[i]))
       dst[i] = escape_char;
     else
       dst[i] = src[i];
@@ -115,13 +116,19 @@ static int gr_format_name(char *ret, int ret_len, value_list_t const *vl,
   if (postfix == NULL)
     postfix = "";
 
-  gr_copy_escape_part(n_host, vl->host, sizeof(n_host), escape_char);
-  gr_copy_escape_part(n_plugin, vl->plugin, sizeof(n_plugin), escape_char);
+  _Bool preserve_separator = (flags & GRAPHITE_PRESERVE_SEPARATOR) ? 1 : 0;
+
+  gr_copy_escape_part(n_host, vl->host, sizeof(n_host), escape_char,
+                      preserve_separator);
+  gr_copy_escape_part(n_plugin, vl->plugin, sizeof(n_plugin), escape_char,
+                      preserve_separator);
   gr_copy_escape_part(n_plugin_instance, vl->plugin_instance,
-                      sizeof(n_plugin_instance), escape_char);
-  gr_copy_escape_part(n_type, vl->type, sizeof(n_type), escape_char);
+                      sizeof(n_plugin_instance), escape_char,
+                      preserve_separator);
+  gr_copy_escape_part(n_type, vl->type, sizeof(n_type), escape_char,
+                      preserve_separator);
   gr_copy_escape_part(n_type_instance, vl->type_instance,
-                      sizeof(n_type_instance), escape_char);
+                      sizeof(n_type_instance), escape_char, preserve_separator);
 
   if (n_plugin_instance[0] != '\0')
     ssnprintf(tmp_plugin, sizeof(tmp_plugin), "%s%c%s", n_plugin,
@@ -130,19 +137,27 @@ static int gr_format_name(char *ret, int ret_len, value_list_t const *vl,
   else
     sstrncpy(tmp_plugin, n_plugin, sizeof(tmp_plugin));
 
-  if (n_type_instance[0] != '\0')
-    ssnprintf(tmp_type, sizeof(tmp_type), "%s%c%s", n_type,
-              (flags & GRAPHITE_SEPARATE_INSTANCES) ? '.' : '-',
-              n_type_instance);
-  else
+  if (n_type_instance[0] != '\0') {
+    if ((flags & GRAPHITE_DROP_DUPE_FIELDS) && strcmp(n_plugin, n_type) == 0)
+      sstrncpy(tmp_type, n_type_instance, sizeof(tmp_type));
+    else
+      ssnprintf(tmp_type, sizeof(tmp_type), "%s%c%s", n_type,
+                (flags & GRAPHITE_SEPARATE_INSTANCES) ? '.' : '-',
+                n_type_instance);
+  } else
     sstrncpy(tmp_type, n_type, sizeof(tmp_type));
 
   /* Assert always_append_ds -> ds_name */
   assert(!(flags & GRAPHITE_ALWAYS_APPEND_DS) || (ds_name != NULL));
-  if (ds_name != NULL)
-    ssnprintf(ret, ret_len, "%s%s%s.%s.%s.%s", prefix, n_host, postfix,
-              tmp_plugin, tmp_type, ds_name);
-  else
+  if (ds_name != NULL) {
+    if ((flags & GRAPHITE_DROP_DUPE_FIELDS) &&
+        strcmp(tmp_plugin, tmp_type) == 0)
+      ssnprintf(ret, ret_len, "%s%s%s.%s.%s", prefix, n_host, postfix,
+                tmp_plugin, ds_name);
+    else
+      ssnprintf(ret, ret_len, "%s%s%s.%s.%s.%s", prefix, n_host, postfix,
+                tmp_plugin, tmp_type, ds_name);
+  } else
     ssnprintf(ret, ret_len, "%s%s%s.%s.%s", prefix, n_host, postfix, tmp_plugin,
               tmp_type);
 

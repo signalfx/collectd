@@ -69,7 +69,6 @@ static void pf_submit(char const *type, char const *type_instance, uint64_t val,
 
   vl.values = values;
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "pf", sizeof(vl.plugin));
   sstrncpy(vl.type, type, sizeof(vl.type));
   sstrncpy(vl.type_instance, type_instance, sizeof(vl.type_instance));

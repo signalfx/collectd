@@ -325,44 +325,58 @@ int strsplit(char *string, char **fields, size_t size) {
 
 int strjoin(char *buffer, size_t buffer_size, char **fields, size_t fields_num,
             const char *sep) {
-  size_t avail;
-  char *ptr;
-  size_t sep_len;
+  size_t avail = 0;
+  char *ptr = buffer;
+  size_t sep_len = 0;
 
-  if ((buffer_size < 1) || (fields_num == 0))
-    return (-1);
+  size_t buffer_req = 0;
 
-  memset(buffer, 0, buffer_size);
-  ptr = buffer;
-  avail = buffer_size - 1;
+  if (((fields_num != 0) && (fields == NULL)) ||
+      ((buffer_size != 0) && (buffer == NULL)))
+    return (-EINVAL);
 
-  sep_len = 0;
+  if (buffer != NULL)
+    buffer[0] = 0;
+
+  if (buffer_size != 0)
+    avail = buffer_size - 1;
+
   if (sep != NULL)
     sep_len = strlen(sep);
 
   for (size_t i = 0; i < fields_num; i++) {
-    size_t field_len;
+    size_t field_len = strlen(fields[i]);
 
-    if ((i > 0) && (sep_len > 0)) {
-      if (avail < sep_len)
-        return (-1);
+    if (i != 0)
+      buffer_req += sep_len;
+    buffer_req += field_len;
+
+    if ((i != 0) && (sep_len > 0)) {
+      if (sep_len >= avail) {
+        /* prevent subsequent iterations from writing to the
+         * buffer. */
+        avail = 0;
+        continue;
+      }
 
       memcpy(ptr, sep, sep_len);
+
       ptr += sep_len;
       avail -= sep_len;
     }
 
-    field_len = strlen(fields[i]);
-    if (avail < field_len)
-      return (-1);
+    if (field_len > avail)
+      field_len = avail;
 
     memcpy(ptr, fields[i], field_len);
     ptr += field_len;
+
     avail -= field_len;
+    if (ptr != NULL)
+      *ptr = 0;
   }
 
-  assert(buffer[buffer_size - 1] == 0);
-  return ((int)strlen(buffer));
+  return (int)buffer_req;
 }
 
 int escape_string(char *buffer, size_t buffer_size) {
@@ -916,7 +930,7 @@ int format_values(char *ret, size_t ret_len, /* {{{ */
 
 int parse_identifier(char *str, char **ret_host, char **ret_plugin,
                      char **ret_plugin_instance, char **ret_type,
-                     char **ret_type_instance) {
+                     char **ret_type_instance, char *default_host) {
   char *hostname = NULL;
   char *plugin = NULL;
   char *plugin_instance = NULL;
@@ -934,10 +948,17 @@ int parse_identifier(char *str, char **ret_host, char **ret_plugin,
   plugin++;
 
   type = strchr(plugin, '/');
-  if (type == NULL)
-    return (-1);
-  *type = '\0';
-  type++;
+  if (type == NULL) {
+    if (default_host == NULL)
+      return (-1);
+    /* else: no host specified; use default */
+    type = plugin;
+    plugin = hostname;
+    hostname = default_host;
+  } else {
+    *type = '\0';
+    type++;
+  }
 
   plugin_instance = strchr(plugin, '-');
   if (plugin_instance != NULL) {
@@ -975,7 +996,8 @@ int parse_identifier_vl(const char *str, value_list_t *vl) /* {{{ */
   sstrncpy(str_copy, str, sizeof(str_copy));
 
   status = parse_identifier(str_copy, &host, &plugin, &plugin_instance, &type,
-                            &type_instance);
+                            &type_instance,
+                            /* default_host = */ NULL);
   if (status != 0)
     return (status);
 
@@ -1101,6 +1123,26 @@ int parse_values(char *buffer, value_list_t *vl, const data_set_t *ds) {
     return (-1);
   return (0);
 } /* int parse_values */
+
+int parse_value_file(char const *path, value_t *ret_value, int ds_type) {
+  FILE *fh;
+  char buffer[256];
+
+  fh = fopen(path, "r");
+  if (fh == NULL)
+    return (-1);
+
+  if (fgets(buffer, sizeof(buffer), fh) == NULL) {
+    fclose(fh);
+    return (-1);
+  }
+
+  fclose(fh);
+
+  strstripnewline(buffer);
+
+  return parse_value(buffer, ret_value, ds_type);
+} /* int parse_value_file */
 
 #if !HAVE_GETPWNAM_R
 int getpwnam_r(const char *name, struct passwd *pwbuf, char *buf, size_t buflen,
@@ -1422,18 +1464,16 @@ void set_sock_opts(int sockfd) /* {{{ */
   int status;
   int socktype;
 
-  socklen_t socklen = sizeof(socklen_t);
-  int so_keepalive = 1;
-
-  status = getsockopt(sockfd, SOL_SOCKET, SO_TYPE, &socktype, &socklen);
+  status = getsockopt(sockfd, SOL_SOCKET, SO_TYPE, &socktype,
+                      &(socklen_t){sizeof(socktype)});
   if (status != 0) {
     WARNING("set_sock_opts: failed to determine socket type");
     return;
   }
 
   if (socktype == SOCK_STREAM) {
-    status = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &so_keepalive,
-                        sizeof(so_keepalive));
+    status =
+        setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &(int){1}, sizeof(int));
     if (status != 0)
       WARNING("set_sock_opts: failed to set socket keepalive flag");
 

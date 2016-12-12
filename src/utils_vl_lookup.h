@@ -54,14 +54,14 @@ typedef void (*lookup_free_class_callback_t)(void *user_class);
  * freed. */
 typedef void (*lookup_free_obj_callback_t)(void *user_obj);
 
-struct identifier_s {
+struct lookup_identifier_s {
   char host[DATA_MAX_NAME_LEN];
   char plugin[DATA_MAX_NAME_LEN];
   char plugin_instance[DATA_MAX_NAME_LEN];
   char type[DATA_MAX_NAME_LEN];
   char type_instance[DATA_MAX_NAME_LEN];
 };
-typedef struct identifier_s identifier_t;
+typedef struct lookup_identifier_s lookup_identifier_t;
 
 #define LU_GROUP_BY_HOST 0x01
 #define LU_GROUP_BY_PLUGIN 0x02
@@ -78,8 +78,8 @@ lookup_t *lookup_create(lookup_class_callback_t, lookup_obj_callback_t,
                         lookup_free_obj_callback_t);
 void lookup_destroy(lookup_t *obj);
 
-int lookup_add(lookup_t *obj, identifier_t const *ident, unsigned int group_by,
-               void *user_class);
+int lookup_add(lookup_t *obj, lookup_identifier_t const *ident,
+               unsigned int group_by, void *user_class);
 
 /* TODO(octo): Pass lookup_obj_callback_t to lookup_search()? */
 int lookup_search(lookup_t *obj, data_set_t const *ds, value_list_t const *vl);

@@ -402,15 +402,11 @@ static int cmc_init(void) /* {{{ */
 } /* }}} int cmc_init */
 
 static void cmc_submit(const web_page_t *wp, const web_match_t *wm, /* {{{ */
-                       const cu_match_value_t *mv) {
-  value_t values[1];
+                       value_t value) {
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0] = mv->value;
-
-  vl.values = values;
+  vl.values = &value;
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "memcachec", sizeof(vl.plugin));
   sstrncpy(vl.plugin_instance, wp->instance, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, wm->type, sizeof(vl.type));
@@ -452,7 +448,7 @@ static int cmc_read_page(web_page_t *wp) /* {{{ */
       continue;
     }
 
-    cmc_submit(wp, wm, mv);
+    cmc_submit(wp, wm, mv->value);
     match_value_reset(mv);
   } /* for (wm = wp->matches; wm != NULL; wm = wm->next) */
 

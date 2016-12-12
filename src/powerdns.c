@@ -48,6 +48,12 @@
     ERROR("powerdns plugin: %s failed: %s", func,                              \
           sstrerror(errno, errbuf, sizeof(errbuf)));                           \
   } while (0)
+#define SOCK_ERROR(func, sockpath)                                             \
+  do {                                                                         \
+    char errbuf[1024];                                                         \
+    ERROR("powerdns plugin: Socket `%s` %s failed: %s", sockpath, func,        \
+          sstrerror(errno, errbuf, sizeof(errbuf)));                           \
+  } while (0)
 
 #define SERVER_SOCKET LOCALSTATEDIR "/run/pdns.controlsocket"
 #define SERVER_COMMAND "SHOW * \n"
@@ -314,9 +320,9 @@ static char *local_sockpath = NULL;
 
 /* <https://doc.powerdns.com/md/recursor/stats/> */
 static void submit(const char *plugin_instance, /* {{{ */
-                   const char *pdns_type, const char *value) {
+                   const char *pdns_type, const char *value_str) {
   value_list_t vl = VALUE_LIST_INIT;
-  value_t values[1];
+  value_t value;
 
   const char *type = NULL;
   const char *type_instance = NULL;
@@ -330,7 +336,7 @@ static void submit(const char *plugin_instance, /* {{{ */
 
   if (i >= lookup_table_length) {
     INFO("powerdns plugin: submit: Not found in lookup table: %s = %s;",
-         pdns_type, value);
+         pdns_type, value_str);
     return;
   }
 
@@ -355,16 +361,15 @@ static void submit(const char *plugin_instance, /* {{{ */
     return;
   }
 
-  if (0 != parse_value(value, &values[0], ds->ds[0].type)) {
+  if (0 != parse_value(value_str, &value, ds->ds[0].type)) {
     ERROR("powerdns plugin: Cannot convert `%s' "
           "to a number.",
-          value);
+          value_str);
     return;
   }
 
-  vl.values = values;
+  vl.values = &value;
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "powerdns", sizeof(vl.plugin));
   sstrncpy(vl.type, type, sizeof(vl.type));
   if (type_instance != NULL)
@@ -385,7 +390,6 @@ static int powerdns_get_data_dgram(list_item_t *item, /* {{{ */
 
   struct sockaddr_un sa_unix = {0};
 
-  struct timeval stv_timeout;
   cdtime_t cdt_timeout;
 
   sd = socket(PF_UNIX, item->socktype, 0);
@@ -401,7 +405,7 @@ static int powerdns_get_data_dgram(list_item_t *item, /* {{{ */
 
   status = unlink(sa_unix.sun_path);
   if ((status != 0) && (errno != ENOENT)) {
-    FUNC_ERROR("unlink");
+    SOCK_ERROR("unlink", sa_unix.sun_path);
     close(sd);
     return (-1);
   }
@@ -412,14 +416,14 @@ static int powerdns_get_data_dgram(list_item_t *item, /* {{{ */
      * and otherwise the daemon cannot answer. */
     status = bind(sd, (struct sockaddr *)&sa_unix, sizeof(sa_unix));
     if (status != 0) {
-      FUNC_ERROR("bind");
+      SOCK_ERROR("bind", sa_unix.sun_path);
       break;
     }
 
     /* Make the socket writeable by the daemon.. */
     status = chmod(sa_unix.sun_path, 0666);
     if (status != 0) {
-      FUNC_ERROR("chmod");
+      SOCK_ERROR("chmod", sa_unix.sun_path);
       break;
     }
 
@@ -427,31 +431,30 @@ static int powerdns_get_data_dgram(list_item_t *item, /* {{{ */
     if (cdt_timeout < TIME_T_TO_CDTIME_T(2))
       cdt_timeout = TIME_T_TO_CDTIME_T(2);
 
-    CDTIME_T_TO_TIMEVAL(cdt_timeout, &stv_timeout);
-
-    status = setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, &stv_timeout,
-                        sizeof(stv_timeout));
+    status =
+        setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO,
+                   &CDTIME_T_TO_TIMEVAL(cdt_timeout), sizeof(struct timeval));
     if (status != 0) {
-      FUNC_ERROR("setsockopt");
+      SOCK_ERROR("setsockopt", sa_unix.sun_path);
       break;
     }
 
     status =
         connect(sd, (struct sockaddr *)&item->sockaddr, sizeof(item->sockaddr));
     if (status != 0) {
-      FUNC_ERROR("connect");
+      SOCK_ERROR("connect", sa_unix.sun_path);
       break;
     }
 
     status = send(sd, item->command, strlen(item->command), 0);
     if (status < 0) {
-      FUNC_ERROR("send");
+      SOCK_ERROR("send", sa_unix.sun_path);
       break;
     }
 
     status = recv(sd, temp, sizeof(temp), /* flags = */ 0);
     if (status < 0) {
-      FUNC_ERROR("recv");
+      SOCK_ERROR("recv", sa_unix.sun_path);
       break;
     }
     buffer_size = status + 1;
@@ -509,7 +512,7 @@ static int powerdns_get_data_stream(list_item_t *item, /* {{{ */
   status =
       connect(sd, (struct sockaddr *)&item->sockaddr, sizeof(item->sockaddr));
   if (status != 0) {
-    FUNC_ERROR("connect");
+    SOCK_ERROR("connect", item->sockaddr.sun_path);
     close(sd);
     return (-1);
   }
@@ -518,7 +521,7 @@ static int powerdns_get_data_stream(list_item_t *item, /* {{{ */
   status = send(sd, item->command, strlen(item->command) + 1,
                 /* flags = */ 0);
   if (status < 0) {
-    FUNC_ERROR("send");
+    SOCK_ERROR("send", item->sockaddr.sun_path);
     close(sd);
     return (-1);
   }
@@ -528,7 +531,7 @@ static int powerdns_get_data_stream(list_item_t *item, /* {{{ */
 
     status = recv(sd, temp, sizeof(temp), /* flags = */ 0);
     if (status < 0) {
-      FUNC_ERROR("recv");
+      SOCK_ERROR("recv", item->sockaddr.sun_path);
       break;
     } else if (status == 0)
       break;

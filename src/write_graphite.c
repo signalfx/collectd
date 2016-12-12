@@ -521,6 +521,10 @@ static int wg_config_node(oconfig_item_t *ci) {
       cf_util_get_flag(child, &cb->format_flags, GRAPHITE_SEPARATE_INSTANCES);
     else if (strcasecmp("AlwaysAppendDS", child->key) == 0)
       cf_util_get_flag(child, &cb->format_flags, GRAPHITE_ALWAYS_APPEND_DS);
+    else if (strcasecmp("PreserveSeparator", child->key) == 0)
+      cf_util_get_flag(child, &cb->format_flags, GRAPHITE_PRESERVE_SEPARATOR);
+    else if (strcasecmp("DropDuplicateFields", child->key) == 0)
+      cf_util_get_flag(child, &cb->format_flags, GRAPHITE_DROP_DUPE_FIELDS);
     else if (strcasecmp("EscapeCharacter", child->key) == 0)
       config_set_char(&cb->escape_char, child);
     else {
@@ -547,12 +551,12 @@ static int wg_config_node(oconfig_item_t *ci) {
     ssnprintf(callback_name, sizeof(callback_name), "write_graphite/%s",
               cb->name);
 
-  user_data_t ud = {.data = cb, .free_func = wg_callback_free};
+  plugin_register_write(callback_name, wg_write,
+                        &(user_data_t){
+                            .data = cb, .free_func = wg_callback_free,
+                        });
 
-  plugin_register_write(callback_name, wg_write, &ud);
-
-  ud.free_func = NULL;
-  plugin_register_flush(callback_name, wg_flush, &ud);
+  plugin_register_flush(callback_name, wg_flush, &(user_data_t){.data = cb});
 
   return (0);
 }

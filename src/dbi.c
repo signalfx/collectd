@@ -352,23 +352,20 @@ static int cdbi_config_add_database(oconfig_item_t *ci) /* {{{ */
       ERROR("dbi plugin: realloc failed");
       status = -1;
     } else {
-      char *name = NULL;
-
       databases = temp;
       databases[databases_num] = db;
       databases_num++;
 
-      name = ssnprintf_alloc("dbi:%s", db->name);
-
-      user_data_t ud = {.data = db};
-
+      char *name = ssnprintf_alloc("dbi:%s", db->name);
       plugin_register_complex_read(
           /* group = */ NULL,
           /* name = */ name ? name : db->name,
           /* callback = */ cdbi_read_database,
           /* interval = */ (db->interval > 0) ? db->interval : 0,
-          /* user_data = */ &ud);
-      free(name);
+          &(user_data_t){
+              .data = db,
+          });
+      sfree(name);
     }
   }
 
@@ -409,13 +406,13 @@ static int cdbi_init(void) /* {{{ */
 
   if (queries_num == 0) {
     ERROR("dbi plugin: No <Query> blocks have been found. Without them, "
-          "this plugin can't do anything useful, so we will returns an error.");
+          "this plugin can't do anything useful, so we will return an error.");
     return (-1);
   }
 
   if (databases_num == 0) {
     ERROR("dbi plugin: No <Database> blocks have been found. Without them, "
-          "this plugin can't do anything useful, so we will returns an error.");
+          "this plugin can't do anything useful, so we will return an error.");
     return (-1);
   }
 

@@ -603,9 +603,9 @@ static int mqtt_config_publisher(oconfig_item_t *ci) {
   }
 
   ssnprintf(cb_name, sizeof(cb_name), "mqtt/%s", conf->name);
-  user_data_t user_data = {.data = conf};
-
-  plugin_register_write(cb_name, mqtt_write, &user_data);
+  plugin_register_write(cb_name, mqtt_write, &(user_data_t){
+                                                 .data = conf,
+                                             });
   return (0);
 } /* mqtt_config_publisher */
 
@@ -734,7 +734,8 @@ static int mqtt_init(void) {
     status = plugin_thread_create(&subscribers[i]->thread,
                                   /* attrs = */ NULL,
                                   /* func  = */ subscribers_thread,
-                                  /* args  = */ subscribers[i]);
+                                  /* args  = */ subscribers[i],
+                                  /* name  = */ "mqtt");
     if (status != 0) {
       char errbuf[1024];
       ERROR("mqtt plugin: pthread_create failed: %s",

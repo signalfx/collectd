@@ -1,6 +1,7 @@
 /**
  * collectd - src/grpc.cc
  * Copyright (C) 2015-2016 Sebastian Harl
+ * Copyright (C) 2016      Florian octo Forster
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -22,6 +23,7 @@
  *
  * Authors:
  *   Sebastian Harl <sh at tokkee.org>
+ *   Florian octo Forster <octo at collectd.org>
  **/
 
 #include <grpc++/grpc++.h>
@@ -47,8 +49,8 @@ extern "C" {
 
 using collectd::Collectd;
 
-using collectd::DispatchValuesRequest;
-using collectd::DispatchValuesResponse;
+using collectd::PutValuesRequest;
+using collectd::PutValuesResponse;
 using collectd::QueryValuesRequest;
 using collectd::QueryValuesResponse;
 
@@ -283,13 +285,13 @@ public:
 		return status;
 	}
 
-	grpc::Status DispatchValues(grpc::ServerContext *ctx,
-								grpc::ServerReader<DispatchValuesRequest> *reader,
-								DispatchValuesResponse *res) override {
-		DispatchValuesRequest req;
+	grpc::Status PutValues(grpc::ServerContext *ctx,
+						   grpc::ServerReader<PutValuesRequest> *reader,
+						   PutValuesResponse *res) override {
+		PutValuesRequest req;
 
 		while (reader->Read(&req)) {
-			value_list_t vl = VALUE_LIST_INIT;
+			value_list_t vl = {0};
 			auto status = unmarshal_value_list(req.value_list(), &vl);
 			if (!status.ok())
 				return status;
@@ -426,18 +428,18 @@ public:
 	CollectdClient(std::shared_ptr<grpc::ChannelInterface> channel) : stub_(Collectd::NewStub(channel)) {
 	}
 
-	int DispatchValues(value_list_t const *vl) {
+	int PutValues(value_list_t const *vl) {
 		grpc::ClientContext ctx;
 
-		DispatchValuesRequest req;
+		PutValuesRequest req;
 		auto status = marshal_value_list(vl, req.mutable_value_list());
 		if (!status.ok()) {
 			ERROR("grpc: Marshalling value_list_t failed.");
 			return -1;
 		}
 
-		DispatchValuesResponse res;
-		auto stream = stub_->DispatchValues(&ctx, &res);
+		PutValuesResponse res;
+		auto stream = stub_->PutValues(&ctx, &res);
 		if (!stream->Write(req)) {
 			NOTICE("grpc: Broken stream.");
 			/* intentionally not returning. */
@@ -451,7 +453,7 @@ public:
 		}
 
 		return 0;
-	} /* int DispatchValues */
+	} /* int PutValues */
 
 private:
 	std::unique_ptr<Collectd::Stub> stub_;
@@ -471,7 +473,7 @@ extern "C" {
 			value_list_t const *vl,
 			user_data_t *ud) {
 		CollectdClient *c = (CollectdClient *) ud->data;
-		return c->DispatchValues(vl);
+		return c->PutValues(vl);
 	}
 
 	static int c_grpc_config_listen(oconfig_item_t *ci)

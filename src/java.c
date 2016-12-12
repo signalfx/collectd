@@ -1304,10 +1304,12 @@ static jint JNICALL cjni_api_register_read(JNIEnv *jvm_env, /* {{{ */
 
   DEBUG("java plugin: Registering new read callback: %s", cbi->name);
 
-  user_data_t ud = {.data = cbi, .free_func = cjni_callback_info_destroy};
-
-  plugin_register_complex_read(/* group = */ NULL, cbi->name, cjni_read,
-                               /* interval = */ 0, &ud);
+  plugin_register_complex_read(
+      /* group = */ NULL, cbi->name, cjni_read,
+      /* interval = */ 0,
+      &(user_data_t){
+          .data = cbi, .free_func = cjni_callback_info_destroy,
+      });
 
   (*jvm_env)->DeleteLocalRef(jvm_env, o_read);
 
@@ -1325,9 +1327,11 @@ static jint JNICALL cjni_api_register_write(JNIEnv *jvm_env, /* {{{ */
 
   DEBUG("java plugin: Registering new write callback: %s", cbi->name);
 
-  user_data_t ud = {.data = cbi, .free_func = cjni_callback_info_destroy};
-
-  plugin_register_write(cbi->name, cjni_write, &ud);
+  plugin_register_write(
+      cbi->name, cjni_write,
+      &(user_data_t){
+          .data = cbi, .free_func = cjni_callback_info_destroy,
+      });
 
   (*jvm_env)->DeleteLocalRef(jvm_env, o_write);
 
@@ -1345,9 +1349,11 @@ static jint JNICALL cjni_api_register_flush(JNIEnv *jvm_env, /* {{{ */
 
   DEBUG("java plugin: Registering new flush callback: %s", cbi->name);
 
-  user_data_t ud = {.data = cbi, .free_func = cjni_callback_info_destroy};
-
-  plugin_register_flush(cbi->name, cjni_flush, &ud);
+  plugin_register_flush(
+      cbi->name, cjni_flush,
+      &(user_data_t){
+          .data = cbi, .free_func = cjni_callback_info_destroy,
+      });
 
   (*jvm_env)->DeleteLocalRef(jvm_env, o_flush);
 
@@ -1372,9 +1378,10 @@ static jint JNICALL cjni_api_register_log(JNIEnv *jvm_env, /* {{{ */
 
   DEBUG("java plugin: Registering new log callback: %s", cbi->name);
 
-  user_data_t ud = {.data = cbi, .free_func = cjni_callback_info_destroy};
-
-  plugin_register_log(cbi->name, cjni_log, &ud);
+  plugin_register_log(cbi->name, cjni_log,
+                      &(user_data_t){
+                          .data = cbi, .free_func = cjni_callback_info_destroy,
+                      });
 
   (*jvm_env)->DeleteLocalRef(jvm_env, o_log);
 
@@ -1393,9 +1400,11 @@ static jint JNICALL cjni_api_register_notification(JNIEnv *jvm_env, /* {{{ */
 
   DEBUG("java plugin: Registering new notification callback: %s", cbi->name);
 
-  user_data_t ud = {.data = cbi, .free_func = cjni_callback_info_destroy};
-
-  plugin_register_notification(cbi->name, cjni_notification, &ud);
+  plugin_register_notification(
+      cbi->name, cjni_notification,
+      &(user_data_t){
+          .data = cbi, .free_func = cjni_callback_info_destroy,
+      });
 
   (*jvm_env)->DeleteLocalRef(jvm_env, o_notification);
 

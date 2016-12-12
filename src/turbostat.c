@@ -68,6 +68,11 @@
 static _Bool aperf_mperf_unstable;
 
 /*
+ * If set, use kernel logical core numbering for all "per core" metrics.
+ */
+static _Bool config_lcn;
+
+/*
  * Bitmask of the list of core C states supported by the processor.
  * Currently supported C-states (by this plugin): 3, 6, 7
  */
@@ -227,6 +232,7 @@ static const char *config_keys[] = {
     "PackageThermalManagement",
     "TCCActivationTemp",
     "RunningAveragePowerLimit",
+    "LogicalCoreNames",
 };
 static const int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
@@ -519,12 +525,9 @@ delta_thread(struct thread_data *delta, const struct thread_data *new,
 static void turbostat_submit(const char *plugin_instance, const char *type,
                              const char *type_instance, gauge_t value) {
   value_list_t vl = VALUE_LIST_INIT;
-  value_t v;
 
-  v.gauge = value;
-  vl.values = &v;
+  vl.values = &(value_t){.gauge = value};
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, PLUGIN_NAME, sizeof(vl.plugin));
   if (plugin_instance != NULL)
     sstrncpy(vl.plugin_instance, plugin_instance, sizeof(vl.plugin_instance));
@@ -549,6 +552,9 @@ static int submit_counters(struct thread_data *t, struct core_data *c,
   double interval_float;
 
   interval_float = CDTIME_T_TO_DOUBLE(time_delta);
+
+  DEBUG("turbostat plugin: submit stats for cpu: %d, core: %d, pkg: %d",
+        t->cpu_id, c->core_id, p->package_id);
 
   ssnprintf(name, sizeof(name), "cpu%02d", t->cpu_id);
 
@@ -577,7 +583,10 @@ static int submit_counters(struct thread_data *t, struct core_data *c,
   if (!(t->flags & CPU_IS_FIRST_THREAD_IN_CORE))
     goto done;
 
-  ssnprintf(name, sizeof(name), "core%02d", c->core_id);
+  /* If not using logical core numbering, set core id */
+  if (!config_lcn) {
+    ssnprintf(name, sizeof(name), "core%02d", c->core_id);
+  }
 
   if (do_core_cstate & (1 << 3))
     turbostat_submit(name, "percent", "c3", 100.0 * c->c3 / t->tsc);
@@ -1029,8 +1038,7 @@ static int __attribute__((format(printf, 1, 2)))
 parse_int_file(const char *fmt, ...) {
   va_list args;
   char path[PATH_MAX];
-  FILE *filep;
-  int len, value;
+  int len;
 
   va_start(args, fmt);
   len = vsnprintf(path, sizeof(path), fmt, args);
@@ -1040,18 +1048,13 @@ parse_int_file(const char *fmt, ...) {
     return -1;
   }
 
-  filep = fopen(path, "r");
-  if (!filep) {
-    ERROR("turbostat plugin: Failed to open '%s'", path);
+  value_t v;
+  if (parse_value_file(path, &v, DS_TYPE_DERIVE) != 0) {
+    ERROR("turbostat plugin: Parsing \"%s\" failed.", path);
     return -1;
   }
-  if (fscanf(filep, "%d", &value) != 1) {
-    ERROR("turbostat plugin: Failed to parse number from '%s'", path);
-    fclose(filep);
-    return -1;
-  }
-  fclose(filep);
-  return value;
+
+  return (int)v.derive;
 }
 
 static int get_threads_on_core(unsigned int cpu) {
@@ -1564,6 +1567,8 @@ static int turbostat_config(const char *key, const char *value) {
   } else if (strcasecmp("PackageThermalManagement", key) == 0) {
     config_ptm = IS_TRUE(value);
     apply_config_ptm = 1;
+  } else if (strcasecmp("LogicalCoreNames", key) == 0) {
+    config_lcn = IS_TRUE(value);
   } else if (strcasecmp("RunningAveragePowerLimit", key) == 0) {
     tmp_val = strtoul(value, &end, 0);
     if (*end != '\0' || tmp_val > UINT_MAX) {

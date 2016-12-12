@@ -210,7 +210,6 @@ static int submit6_match(const struct ip6t_entry_match *match,
                          const struct ip6t_entry *entry,
                          const ip_chain_t *chain, int rule_num) {
   int status;
-  value_t values[1];
   value_list_t vl = VALUE_LIST_INIT;
 
   /* Select the rules to collect */
@@ -225,9 +224,6 @@ static int submit6_match(const struct ip6t_entry_match *match,
       return (0);
   }
 
-  vl.values = values;
-  vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "ip6tables", sizeof(vl.plugin));
 
   status = ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%s-%s",
@@ -246,22 +242,22 @@ static int submit6_match(const struct ip6t_entry_match *match,
   }
 
   sstrncpy(vl.type, "ipt_bytes", sizeof(vl.type));
-  values[0].derive = (derive_t)entry->counters.bcnt;
+  vl.values = &(value_t){.derive = (derive_t)entry->counters.bcnt};
+  vl.values_len = 1;
   plugin_dispatch_values(&vl);
 
   sstrncpy(vl.type, "ipt_packets", sizeof(vl.type));
-  values[0].derive = (derive_t)entry->counters.pcnt;
+  vl.values = &(value_t){.derive = (derive_t)entry->counters.pcnt};
   plugin_dispatch_values(&vl);
 
   return (0);
-} /* int submit_match */
+} /* int submit6_match */
 
 /* This needs to return `int' for IPT_MATCH_ITERATE to work. */
 static int submit_match(const struct ipt_entry_match *match,
                         const struct ipt_entry *entry, const ip_chain_t *chain,
                         int rule_num) {
   int status;
-  value_t values[1];
   value_list_t vl = VALUE_LIST_INIT;
 
   /* Select the rules to collect */
@@ -276,9 +272,6 @@ static int submit_match(const struct ipt_entry_match *match,
       return (0);
   }
 
-  vl.values = values;
-  vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "iptables", sizeof(vl.plugin));
 
   status = ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%s-%s",
@@ -297,11 +290,12 @@ static int submit_match(const struct ipt_entry_match *match,
   }
 
   sstrncpy(vl.type, "ipt_bytes", sizeof(vl.type));
-  values[0].derive = (derive_t)entry->counters.bcnt;
+  vl.values = &(value_t){.derive = (derive_t)entry->counters.bcnt};
+  vl.values_len = 1;
   plugin_dispatch_values(&vl);
 
   sstrncpy(vl.type, "ipt_packets", sizeof(vl.type));
-  values[0].derive = (derive_t)entry->counters.pcnt;
+  vl.values = &(value_t){.derive = (derive_t)entry->counters.pcnt};
   plugin_dispatch_values(&vl);
 
   return (0);

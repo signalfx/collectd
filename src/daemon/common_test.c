@@ -145,44 +145,50 @@ DEF_TEST(strsplit) {
 }
 
 DEF_TEST(strjoin) {
-  char buffer[16];
-  char *fields[4];
-  int status;
+  struct {
+    char **fields;
+    size_t fields_num;
+    char *separator;
 
-  fields[0] = "foo";
-  fields[1] = "bar";
-  fields[2] = "baz";
-  fields[3] = "qux";
+    int want_return;
+    char *want_buffer;
+  } cases[] = {
+      /* Normal case. */
+      {(char *[]){"foo", "bar"}, 2, "!", 7, "foo!bar"},
+      /* One field only. */
+      {(char *[]){"foo"}, 1, "!", 3, "foo"},
+      /* No fields at all. */
+      {NULL, 0, "!", 0, ""},
+      /* Longer separator. */
+      {(char *[]){"foo", "bar"}, 2, "rcht", 10, "foorchtbar"},
+      /* Empty separator. */
+      {(char *[]){"foo", "bar"}, 2, "", 6, "foobar"},
+      /* NULL separator. */
+      {(char *[]){"foo", "bar"}, 2, NULL, 6, "foobar"},
+      /* buffer not large enough -> string is truncated. */
+      {(char *[]){"aaaaaa", "bbbbbb", "c!"}, 3, "-", 16, "aaaaaa-bbbbbb-c"},
+      /* buffer not large enough -> last field fills buffer completely. */
+      {(char *[]){"aaaaaaa", "bbbbbbb", "!"}, 3, "-", 17, "aaaaaaa-bbbbbbb"},
+      /* buffer not large enough -> string does *not* end in separator. */
+      {(char *[]){"aaaa", "bbbb", "cccc", "!"}, 4, "-", 16, "aaaa-bbbb-cccc"},
+      /* buffer not large enough -> string does not end with partial
+         separator. */
+      {(char *[]){"aaaaaa", "bbbbbb", "!"}, 3, "+-", 17, "aaaaaa+-bbbbbb"},
+  };
 
-  status = strjoin(buffer, sizeof(buffer), fields, 2, "!");
-  OK(status == 7);
-  EXPECT_EQ_STR("foo!bar", buffer);
+  for (size_t i = 0; i < STATIC_ARRAY_SIZE(cases); i++) {
+    char buffer[16];
+    int status;
 
-  status = strjoin(buffer, sizeof(buffer), fields, 1, "!");
-  OK(status == 3);
-  EXPECT_EQ_STR("foo", buffer);
+    memset(buffer, 0xFF, sizeof(buffer));
+    status = strjoin(buffer, sizeof(buffer), cases[i].fields,
+                     cases[i].fields_num, cases[i].separator);
+    EXPECT_EQ_INT(cases[i].want_return, status);
+    EXPECT_EQ_STR(cases[i].want_buffer, buffer);
+  }
 
-  status = strjoin(buffer, sizeof(buffer), fields, 0, "!");
-  OK(status < 0);
-
-  status = strjoin(buffer, sizeof(buffer), fields, 2, "rcht");
-  OK(status == 10);
-  EXPECT_EQ_STR("foorchtbar", buffer);
-
-  status = strjoin(buffer, sizeof(buffer), fields, 4, "");
-  OK(status == 12);
-  EXPECT_EQ_STR("foobarbazqux", buffer);
-
-  status = strjoin(buffer, sizeof(buffer), fields, 4, "!");
-  OK(status == 15);
-  EXPECT_EQ_STR("foo!bar!baz!qux", buffer);
-
-  fields[0] = "0123";
-  fields[1] = "4567";
-  fields[2] = "8901";
-  fields[3] = "2345";
-  status = strjoin(buffer, sizeof(buffer), fields, 4, "-");
-  OK(status < 0);
+  /* use (NULL, 0) to determine required buffer size. */
+  EXPECT_EQ_INT(3, strjoin(NULL, 0, (char *[]){"a", "b"}, 2, "-"));
 
   return (0);
 }
@@ -351,18 +357,21 @@ DEF_TEST(value_to_rate) {
   };
 
   for (size_t i = 0; i < STATIC_ARRAY_SIZE(cases); i++) {
-    value_to_rate_state_t state = {cases[i].v0,
-                                   TIME_T_TO_CDTIME_T(cases[i].t0)};
+    cdtime_t t0 = TIME_T_TO_CDTIME_T(cases[i].t0);
+    value_to_rate_state_t state = {
+        .last_value = cases[i].v0, .last_time = t0,
+    };
     gauge_t got;
 
     if (cases[i].t0 == 0) {
-      OK(value_to_rate(&got, cases[i].v1, cases[i].ds_type,
-                       TIME_T_TO_CDTIME_T(cases[i].t1), &state) == EAGAIN);
+      EXPECT_EQ_INT(EAGAIN,
+                    value_to_rate(&got, cases[i].v1, cases[i].ds_type,
+                                  TIME_T_TO_CDTIME_T(cases[i].t1), &state));
       continue;
     }
 
-    OK(value_to_rate(&got, cases[i].v1, cases[i].ds_type,
-                     TIME_T_TO_CDTIME_T(cases[i].t1), &state) == 0);
+    EXPECT_EQ_INT(0, value_to_rate(&got, cases[i].v1, cases[i].ds_type,
+                                   TIME_T_TO_CDTIME_T(cases[i].t1), &state));
     EXPECT_EQ_DOUBLE(cases[i].want, got);
   }
 

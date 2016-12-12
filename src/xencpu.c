@@ -101,16 +101,12 @@ static int xencpu_shutdown(void) {
   return 0;
 } /* static int xencpu_shutdown */
 
-static void submit_value(int cpu_num, gauge_t percent) {
-  value_t values[1];
+static void submit_value(int cpu_num, gauge_t value) {
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0].gauge = percent;
-
-  vl.values = values;
+  vl.values = &(value_t){.gauge = value};
   vl.values_len = 1;
 
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "xencpu", sizeof(vl.plugin));
   sstrncpy(vl.type, "percent", sizeof(vl.type));
   sstrncpy(vl.type_instance, "load", sizeof(vl.type_instance));
@@ -136,9 +132,9 @@ static int xencpu_read(void) {
   int status;
   for (int cpu = 0; cpu < nr_cpus; cpu++) {
     gauge_t rate = NAN;
-    value_t value = {.derive = cpu_info[cpu].idletime};
 
-    status = value_to_rate(&rate, value, DS_TYPE_DERIVE, now, &cpu_states[cpu]);
+    status = value_to_rate(&rate, (value_t){.derive = cpu_info[cpu].idletime},
+                           DS_TYPE_DERIVE, now, &cpu_states[cpu]);
     if (status == 0) {
       submit_value(cpu, 100 - rate / 10000000);
     }

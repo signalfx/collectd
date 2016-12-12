@@ -562,15 +562,11 @@ static int cc_init(void) /* {{{ */
 } /* }}} int cc_init */
 
 static void cc_submit(const web_page_t *wp, const web_match_t *wm, /* {{{ */
-                      const cu_match_value_t *mv) {
-  value_t values[1];
+                      value_t value) {
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0] = mv->value;
-
-  vl.values = values;
+  vl.values = &value;
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "curl", sizeof(vl.plugin));
   sstrncpy(vl.plugin_instance, wp->instance, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, wm->type, sizeof(vl.type));
@@ -582,14 +578,10 @@ static void cc_submit(const web_page_t *wp, const web_match_t *wm, /* {{{ */
 
 static void cc_submit_response_code(const web_page_t *wp, long code) /* {{{ */
 {
-  value_t values[1];
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0].gauge = code;
-
-  vl.values = values;
+  vl.values = &(value_t){.gauge = (gauge_t)code};
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "curl", sizeof(vl.plugin));
   sstrncpy(vl.plugin_instance, wp->instance, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, "response_code", sizeof(vl.type));
@@ -598,15 +590,11 @@ static void cc_submit_response_code(const web_page_t *wp, long code) /* {{{ */
 } /* }}} void cc_submit_response_code */
 
 static void cc_submit_response_time(const web_page_t *wp, /* {{{ */
-                                    cdtime_t response_time) {
-  value_t values[1];
+                                    gauge_t response_time) {
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0].gauge = CDTIME_T_TO_DOUBLE(response_time);
-
-  vl.values = values;
+  vl.values = &(value_t){.gauge = response_time};
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "curl", sizeof(vl.plugin));
   sstrncpy(vl.plugin_instance, wp->instance, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, "response_time", sizeof(vl.type));
@@ -631,7 +619,7 @@ static int cc_read_page(web_page_t *wp) /* {{{ */
   }
 
   if (wp->response_time)
-    cc_submit_response_time(wp, cdtime() - start);
+    cc_submit_response_time(wp, CDTIME_T_TO_DOUBLE(cdtime() - start));
   if (wp->stats != NULL)
     curl_stats_dispatch(wp->stats, wp->curl, hostname_g, "curl", wp->instance);
 
@@ -662,7 +650,7 @@ static int cc_read_page(web_page_t *wp) /* {{{ */
       continue;
     }
 
-    cc_submit(wp, wm, mv);
+    cc_submit(wp, wm, mv->value);
     match_value_reset(mv);
   } /* for (wm = wp->matches; wm != NULL; wm = wm->next) */
 

@@ -40,7 +40,6 @@ cgroups_submit_one(char const *plugin_instance, char const *type_instance,
 
   vl.values = &value;
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "cgroups", sizeof(vl.plugin));
   sstrncpy(vl.plugin_instance, plugin_instance, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, "cpu", sizeof(vl.type));

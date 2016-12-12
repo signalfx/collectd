@@ -31,6 +31,7 @@
 #include "utils_cmd_putval.h"
 #include "utils_format_graphite.h"
 #include "utils_format_json.h"
+#include "utils_random.h"
 
 #include <errno.h>
 #include <librdkafka/rdkafka.h>
@@ -88,7 +89,7 @@ static uint32_t kafka_hash(const char *keydata, size_t keylen) {
 #define KAFKA_RANDOM_KEY_BUFFER                                                \
   (char[KAFKA_RANDOM_KEY_SIZE]) { "" }
 static char *kafka_random_key(char buffer[static KAFKA_RANDOM_KEY_SIZE]) {
-  ssnprintf(buffer, KAFKA_RANDOM_KEY_SIZE, "%08lX", (unsigned long)mrand48());
+  ssnprintf(buffer, KAFKA_RANDOM_KEY_SIZE, "%08" PRIX32, cdrand_u());
   return buffer;
 }
 
@@ -185,9 +186,10 @@ static int kafka_write(const data_set_t *ds, /* {{{ */
 
   switch (ctx->format) {
   case KAFKA_FORMAT_COMMAND:
-    status = create_putval(buffer, sizeof(buffer), ds, vl);
+    status = cmd_create_putval(buffer, sizeof(buffer), ds, vl);
     if (status != 0) {
-      ERROR("write_kafka plugin: create_putval failed with status %i.", status);
+      ERROR("write_kafka plugin: cmd_create_putval failed with status %i.",
+            status);
       return status;
     }
     blen = strlen(buffer);
@@ -369,6 +371,10 @@ static void kafka_config_topic(rd_kafka_conf_t *conf,
       status = cf_util_get_flag(child, &tctx->graphite_flags,
                                 GRAPHITE_ALWAYS_APPEND_DS);
 
+    } else if (strcasecmp("GraphitePreserveSeparator", child->key) == 0) {
+      status = cf_util_get_flag(child, &tctx->graphite_flags,
+                                GRAPHITE_PRESERVE_SEPARATOR);
+
     } else if (strcasecmp("GraphitePrefix", child->key) == 0) {
       status = cf_util_get_string(child, &tctx->prefix);
     } else if (strcasecmp("GraphitePostfix", child->key) == 0) {
@@ -395,9 +401,11 @@ static void kafka_config_topic(rd_kafka_conf_t *conf,
   ssnprintf(callback_name, sizeof(callback_name), "write_kafka/%s",
             tctx->topic_name);
 
-  user_data_t ud = {.data = tctx, .free_func = kafka_topic_context_free};
-
-  status = plugin_register_write(callback_name, kafka_write, &ud);
+  status = plugin_register_write(
+      callback_name, kafka_write,
+      &(user_data_t){
+          .data = tctx, .free_func = kafka_topic_context_free,
+      });
   if (status != 0) {
     WARNING("write_kafka plugin: plugin_register_write (\"%s\") "
             "failed with status %i.",

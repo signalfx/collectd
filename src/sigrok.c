@@ -155,7 +155,6 @@ static void sigrok_feed_callback(const struct sr_dev_inst *sdi,
                                  void *cb_data) {
   const struct sr_datafeed_analog *analog;
   struct config_device *cfdev;
-  value_t value;
   value_list_t vl = VALUE_LIST_INIT;
 
   /* Find this device's configuration. */
@@ -192,12 +191,10 @@ static void sigrok_feed_callback(const struct sr_dev_inst *sdi,
 
   /* Ignore all but the first sample on the first probe. */
   analog = packet->payload;
-  value.gauge = analog->data[0];
-  vl.values = &value;
+  vl.values = &(value_t){.gauge = analog->data[0]};
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "sigrok", sizeof(vl.plugin));
-  ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%s", cfdev->name);
+  sstrncpy(vl.plugin_instance, cfdev->name, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, sigrok_value_type(analog), sizeof(vl.type));
 
   plugin_dispatch_values(&vl);
@@ -340,7 +337,8 @@ static int sigrok_init(void) {
     return -1;
   }
 
-  status = plugin_thread_create(&sr_thread, NULL, sigrok_read_thread, NULL);
+  status = plugin_thread_create(&sr_thread, NULL, sigrok_read_thread, NULL,
+                                "sigrok read");
   if (status != 0) {
     char errbuf[1024];
     ERROR("sigrok plugin: Failed to create thread: %s.",

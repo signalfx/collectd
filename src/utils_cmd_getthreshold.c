@@ -95,7 +95,8 @@ int handle_getthreshold(FILE *fh, char *buffer) {
   identifier_copy = sstrdup(identifier);
 
   status = parse_identifier(identifier_copy, &host, &plugin, &plugin_instance,
-                            &type, &type_instance);
+                            &type, &type_instance,
+                            /* default_host = */ NULL);
   if (status != 0) {
     DEBUG("handle_getthreshold: Cannot parse identifier `%s'.", identifier);
     print_to_socket(fh, "-1 Cannot parse identifier `%s'.\n", identifier);

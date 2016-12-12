@@ -121,19 +121,16 @@ static int mic_config(const char *key, const char *value) {
 }
 
 static void mic_submit_memory_use(int micnumber, const char *type_instance,
-                                  U32 val) {
-  value_t values[1];
+                                  U32 value) {
   value_list_t vl = VALUE_LIST_INIT;
 
   /* MicAccessAPI reports KB's of memory, adjust for this */
-  DEBUG("mic plugin: Memory Value Report; %u %lf", val,
-        ((gauge_t)val) * 1024.0);
-  values[0].gauge = ((gauge_t)val) * 1024.0;
+  DEBUG("mic plugin: Memory Value Report; %u %lf", value,
+        ((gauge_t)value) * 1024.0);
 
-  vl.values = values;
+  vl.values = &(value_t){.gauge = ((gauge_t)value) * 1024.0};
   vl.values_len = 1;
 
-  strncpy(vl.host, hostname_g, sizeof(vl.host));
   strncpy(vl.plugin, "mic", sizeof(vl.plugin));
   ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%i", micnumber);
   strncpy(vl.type, "memory", sizeof(vl.type));
@@ -160,13 +157,10 @@ static int mic_read_memory(int mic) {
   return (0);
 }
 
-static void mic_submit_temp(int micnumber, const char *type, gauge_t val) {
-  value_t values[1];
+static void mic_submit_temp(int micnumber, const char *type, gauge_t value) {
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0].gauge = val;
-
-  vl.values = values;
+  vl.values = &(value_t){.gauge = value};
   vl.values_len = 1;
 
   strncpy(vl.host, hostname_g, sizeof(vl.host));
@@ -205,13 +199,10 @@ static int mic_read_temps(int mic) {
 }
 
 static void mic_submit_cpu(int micnumber, const char *type_instance, int core,
-                           derive_t val) {
-  value_t values[1];
+                           derive_t value) {
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0].derive = val;
-
-  vl.values = values;
+  vl.values = &(value_t){.derive = value};
   vl.values_len = 1;
 
   strncpy(vl.host, hostname_g, sizeof(vl.host));
@@ -262,13 +253,10 @@ static int mic_read_cpu(int mic) {
 }
 
 static void mic_submit_power(int micnumber, const char *type,
-                             const char *type_instance, gauge_t val) {
-  value_t values[1];
+                             const char *type_instance, gauge_t value) {
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0].gauge = val;
-
-  vl.values = values;
+  vl.values = &(value_t){.gauge = value};
   vl.values_len = 1;
 
   strncpy(vl.host, hostname_g, sizeof(vl.host));

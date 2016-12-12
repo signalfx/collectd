@@ -359,7 +359,7 @@ static int start_thread(void) /* {{{ */
   ping_thread_loop = 1;
   ping_thread_error = 0;
   status = plugin_thread_create(&ping_thread_id, /* attr = */ NULL, ping_thread,
-                                /* arg = */ (void *)0);
+                                /* arg = */ (void *)0, "ping");
   if (status != 0) {
     ping_thread_loop = 0;
     ERROR("ping plugin: Starting thread failed.");
@@ -554,16 +554,11 @@ static int ping_config(const char *key, const char *value) /* {{{ */
 
 static void submit(const char *host, const char *type, /* {{{ */
                    gauge_t value) {
-  value_t values[1];
   value_list_t vl = VALUE_LIST_INIT;
 
-  values[0].gauge = value;
-
-  vl.values = values;
+  vl.values = &(value_t){.gauge = value};
   vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, "ping", sizeof(vl.plugin));
-  sstrncpy(vl.plugin_instance, "", sizeof(vl.plugin_instance));
   sstrncpy(vl.type_instance, host, sizeof(vl.type_instance));
   sstrncpy(vl.type, type, sizeof(vl.type));
 

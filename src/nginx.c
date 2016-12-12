@@ -182,10 +182,8 @@ static void submit(const char *type, const char *inst, long long value) {
     return;
 
   vl.values = values;
-  vl.values_len = 1;
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
+  vl.values_len = STATIC_ARRAY_SIZE(values);
   sstrncpy(vl.plugin, "nginx", sizeof(vl.plugin));
-  sstrncpy(vl.plugin_instance, "", sizeof(vl.plugin_instance));
   sstrncpy(vl.type, type, sizeof(vl.type));
 
   if (inst != NULL)
@@ -227,7 +225,7 @@ static int nginx_read(void) {
   /*
    * Active connections: 291
    * server accepts handled requests
-   *  16630948 16630948 31070465
+   *  101059015 100422216 347910649
    * Reading: 6 Writing: 179 Waiting: 106
    */
   for (int i = 0; i < lines_num; i++) {
@@ -241,7 +239,11 @@ static int nginx_read(void) {
       } else if ((atoll(fields[0]) != 0) && (atoll(fields[1]) != 0) &&
                  (atoll(fields[2]) != 0)) {
         submit("connections", "accepted", atoll(fields[0]));
+        /* TODO: The legacy metric "handled", which is the sum of "accepted" and
+         * "failed", is reported for backwards compatibility only. Remove in the
+         * next major version. */
         submit("connections", "handled", atoll(fields[1]));
+        submit("connections", "failed", (atoll(fields[0]) - atoll(fields[1])));
         submit("nginx_requests", NULL, atoll(fields[2]));
       }
     } else if (fields_num == 6) {

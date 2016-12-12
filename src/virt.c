@@ -26,6 +26,7 @@
 #include "utils_complain.h"
 #include "utils_ignorelist.h"
 
+#include <libgen.h> /* for basename(3) */
 #include <libvirt/libvirt.h>
 #include <libvirt/virterror.h>
 #include <libxml/parser.h>
@@ -41,6 +42,8 @@ static const char *config_keys[] = {"Connection",
 
                                     "Domain",
                                     "BlockDevice",
+                                    "BlockDeviceFormat",
+                                    "BlockDeviceFormatBasename",
                                     "InterfaceDevice",
                                     "IgnoreSelected",
 
@@ -119,9 +122,15 @@ enum plginst_field { plginst_none = 0, plginst_name, plginst_uuid };
 static enum plginst_field plugin_instance_format[PLGINST_MAX_FIELDS] = {
     plginst_none};
 
+/* BlockDeviceFormat */
+enum bd_field { target, source };
+
 /* InterfaceFormat. */
 enum if_field { if_address, if_name, if_number };
 
+/* BlockDeviceFormatBasename */
+_Bool blockdevice_format_basename = 0;
+static enum bd_field blockdevice_format = target;
 static enum if_field interface_format = if_name;
 
 /* Time that we last refreshed. */
@@ -210,95 +219,61 @@ static void init_value_list(value_list_t *vl, virDomainPtr dom) {
 
 } /* void init_value_list */
 
-static void memory_submit(gauge_t memory, virDomainPtr dom) {
-  value_t values[1];
+static void submit(virDomainPtr dom, char const *type,
+                   char const *type_instance, value_t *values,
+                   size_t values_len) {
   value_list_t vl = VALUE_LIST_INIT;
-
   init_value_list(&vl, dom);
 
-  values[0].gauge = memory;
-
   vl.values = values;
-  vl.values_len = 1;
+  vl.values_len = values_len;
 
-  sstrncpy(vl.type, "memory", sizeof(vl.type));
-  sstrncpy(vl.type_instance, "total", sizeof(vl.type_instance));
+  sstrncpy(vl.type, type, sizeof(vl.type));
+  if (type_instance != NULL)
+    sstrncpy(vl.type_instance, type_instance, sizeof(vl.type_instance));
 
   plugin_dispatch_values(&vl);
 }
 
-static void memory_stats_submit(gauge_t memory, virDomainPtr dom,
+static void memory_submit(gauge_t value, virDomainPtr dom) {
+  submit(dom, "memory", "total", &(value_t){.gauge = value}, 1);
+}
+
+static void memory_stats_submit(gauge_t value, virDomainPtr dom,
                                 int tag_index) {
   static const char *tags[] = {"swap_in",        "swap_out", "major_fault",
                                "minor_fault",    "unused",   "available",
                                "actual_balloon", "rss"};
 
-  value_t values[1];
-  value_list_t vl = VALUE_LIST_INIT;
+  if ((tag_index < 0) || (tag_index >= STATIC_ARRAY_SIZE(tags))) {
+    ERROR("virt plugin: Array index out of bounds: tag_index = %d", tag_index);
+    return;
+  }
 
-  init_value_list(&vl, dom);
-
-  values[0].gauge = memory;
-
-  vl.values = values;
-  vl.values_len = 1;
-
-  sstrncpy(vl.type, "memory", sizeof(vl.type));
-  sstrncpy(vl.type_instance, tags[tag_index], sizeof(vl.type_instance));
-
-  plugin_dispatch_values(&vl);
+  submit(dom, "memory", tags[tag_index], &(value_t){.gauge = value}, 1);
 }
 
-static void cpu_submit(unsigned long long cpu_time, virDomainPtr dom,
+static void cpu_submit(unsigned long long value, virDomainPtr dom,
                        const char *type) {
-  value_t values[1];
-  value_list_t vl = VALUE_LIST_INIT;
-
-  init_value_list(&vl, dom);
-
-  values[0].derive = cpu_time;
-
-  vl.values = values;
-  vl.values_len = 1;
-
-  sstrncpy(vl.type, type, sizeof(vl.type));
-
-  plugin_dispatch_values(&vl);
+  submit(dom, type, NULL, &(value_t){.derive = (derive_t)value}, 1);
 }
 
-static void vcpu_submit(derive_t cpu_time, virDomainPtr dom, int vcpu_nr,
+static void vcpu_submit(derive_t value, virDomainPtr dom, int vcpu_nr,
                         const char *type) {
-  value_t values[1];
-  value_list_t vl = VALUE_LIST_INIT;
+  char type_instance[DATA_MAX_NAME_LEN];
 
-  init_value_list(&vl, dom);
+  ssnprintf(type_instance, sizeof(type_instance), "%d", vcpu_nr);
 
-  values[0].derive = cpu_time;
-  vl.values = values;
-  vl.values_len = 1;
-
-  sstrncpy(vl.type, type, sizeof(vl.type));
-  ssnprintf(vl.type_instance, sizeof(vl.type_instance), "%d", vcpu_nr);
-
-  plugin_dispatch_values(&vl);
+  submit(dom, type, type_instance, &(value_t){.derive = value}, 1);
 }
 
 static void submit_derive2(const char *type, derive_t v0, derive_t v1,
                            virDomainPtr dom, const char *devname) {
-  value_t values[2];
-  value_list_t vl = VALUE_LIST_INIT;
+  value_t values[] = {
+      {.derive = v0}, {.derive = v1},
+  };
 
-  init_value_list(&vl, dom);
-
-  values[0].derive = v0;
-  values[1].derive = v1;
-  vl.values = values;
-  vl.values_len = 2;
-
-  sstrncpy(vl.type, type, sizeof(vl.type));
-  sstrncpy(vl.type_instance, devname, sizeof(vl.type_instance));
-
-  plugin_dispatch_values(&vl);
+  submit(dom, type, devname, values, STATIC_ARRAY_SIZE(values));
 } /* void submit_derive2 */
 
 static int lv_init(void) {
@@ -346,6 +321,22 @@ static int lv_config(const char *key, const char *value) {
   if (strcasecmp(key, "BlockDevice") == 0) {
     if (ignorelist_add(il_block_devices, value))
       return 1;
+    return 0;
+  }
+
+  if (strcasecmp(key, "BlockDeviceFormat") == 0) {
+    if (strcasecmp(value, "target") == 0)
+      blockdevice_format = target;
+    else if (strcasecmp(value, "source") == 0)
+      blockdevice_format = source;
+    else {
+      ERROR(PLUGIN_NAME " plugin: unknown BlockDeviceFormat: %s", value);
+      return -1;
+    }
+    return 0;
+  }
+  if (strcasecmp(key, "BlockDeviceFormatBasename") == 0) {
+    blockdevice_format_basename = IS_TRUE(value);
     return 0;
   }
   if (strcasecmp(key, "InterfaceDevice") == 0) {
@@ -583,14 +574,22 @@ static int lv_read(void) {
                             sizeof stats) != 0)
       continue;
 
+    char *type_instance = NULL;
+    if (blockdevice_format_basename && blockdevice_format == source)
+      type_instance = strdup(basename(block_devices[i].path));
+    else
+      type_instance = strdup(block_devices[i].path);
+
     if ((stats.rd_req != -1) && (stats.wr_req != -1))
       submit_derive2("disk_ops", (derive_t)stats.rd_req, (derive_t)stats.wr_req,
-                     block_devices[i].dom, block_devices[i].path);
+                     block_devices[i].dom, type_instance);
 
     if ((stats.rd_bytes != -1) && (stats.wr_bytes != -1))
       submit_derive2("disk_octets", (derive_t)stats.rd_bytes,
                      (derive_t)stats.wr_bytes, block_devices[i].dom,
-                     block_devices[i].path);
+                     type_instance);
+
+    sfree(type_instance);
   } /* for (nr_block_devices) */
 
   /* Get interface stats for each domain. */
@@ -716,8 +715,11 @@ static int refresh_lists(void) {
       xpath_ctx = xmlXPathNewContext(xml_doc);
 
       /* Block devices. */
-      xpath_obj = xmlXPathEval((xmlChar *)"/domain/devices/disk/target[@dev]",
-                               xpath_ctx);
+      char *bd_xmlpath = "/domain/devices/disk/target[@dev]";
+      if (blockdevice_format == source)
+        bd_xmlpath = "/domain/devices/disk/source[@dev]";
+      xpath_obj = xmlXPathEval((xmlChar *)bd_xmlpath, xpath_ctx);
+
       if (xpath_obj == NULL || xpath_obj->type != XPATH_NODESET ||
           xpath_obj->nodesetval == NULL)
         goto cont;

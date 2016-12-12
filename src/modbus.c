@@ -443,6 +443,8 @@ static int mb_read_data(mb_host_t *host, mb_slave_t *slave, /* {{{ */
   if (host->connection == NULL) {
     status = EBADF;
   } else if (host->conntype == MBCONN_TCP) {
+    /* getpeername() is used only to determine if the socket is connected, not
+     * because we're really interested in the peer's IP address. */
     if (getpeername(modbus_get_socket(host->connection),
                     (void *)&(struct sockaddr_storage){0},
                     &(socklen_t){sizeof(struct sockaddr_storage)}) != 0)
@@ -930,17 +932,16 @@ static int mb_config_add_host(oconfig_item_t *ci) /* {{{ */
   }
 
   if (status == 0) {
-    user_data_t ud;
     char name[1024];
-
-    ud.data = host;
-    ud.free_func = host_free;
 
     ssnprintf(name, sizeof(name), "modbus-%s", host->host);
 
     plugin_register_complex_read(/* group = */ NULL, name,
                                  /* callback = */ mb_read,
-                                 /* interval = */ host->interval, &ud);
+                                 /* interval = */ host->interval,
+                                 &(user_data_t){
+                                     .data = host, .free_func = host_free,
+                                 });
   } else {
     host_free(host);
   }
