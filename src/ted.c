@@ -39,8 +39,7 @@
 #include "common.h"
 #include "plugin.h"
 
-#if HAVE_TERMIOS_H && HAVE_SYS_IOCTL_H && HAVE_MATH_H
-#include <math.h>
+#if HAVE_TERMIOS_H && HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>
 #include <termios.h>
 #else
@@ -300,5 +299,3 @@ void module_register(void) {
   plugin_register_read("ted", ted_read);
   plugin_register_shutdown("ted", ted_shutdown);
 } /* void module_register */
-
-/* vim: set sw=4 et : */

@@ -39,9 +39,7 @@
 /*
  * Includes (for data types)
  */
-#if HAVE_STDINT_H
 #include <stdint.h>
-#endif
 #include <inttypes.h>
 #include <time.h>
 
@@ -141,5 +139,4 @@ int lcc_sort_identifiers(lcc_connection_t *c, lcc_identifier_t *idents,
 
 LCC_END_DECLS
 
-/* vim: set sw=2 sts=2 et : */
 #endif /* LIBCOLLECTD_COLLECTDCLIENT_H */

@@ -34,11 +34,7 @@
 #include "plugin.h"
 #include "utils_cache.h"
 
-#if HAVE_STDINT_H
 #define MONGO_HAVE_STDINT 1
-#else
-#define MONGO_USE_LONG_LONG_INT 1
-#endif
 #include <mongo.h>
 
 #if (MONGO_MAJOR == 0) && (MONGO_MINOR < 8)
@@ -348,5 +344,3 @@ static int wm_config(oconfig_item_t *ci) /* {{{ */
 void module_register(void) {
   plugin_register_complex_config("write_mongodb", wm_config);
 }
-
-/* vim: set sw=2 sts=2 tw=78 et fdm=marker : */

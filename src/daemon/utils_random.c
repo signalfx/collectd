@@ -61,6 +61,17 @@ double cdrand_d(void) {
   return (r);
 }
 
+uint32_t cdrand_u(void) {
+  long r;
+
+  pthread_mutex_lock(&lock);
+  cdrand_seed();
+  r = jrand48(seed);
+  pthread_mutex_unlock(&lock);
+
+  return (uint32_t)r;
+}
+
 long cdrand_range(long min, long max) {
   long range;
   long r;

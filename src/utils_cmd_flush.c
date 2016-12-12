@@ -31,7 +31,6 @@
 #include "common.h"
 #include "plugin.h"
 #include "utils_cmd_flush.h"
-#include "utils_parse_option.h"
 
 cmd_status_t cmd_parse_flush(size_t argc, char **argv, cmd_flush_t *ret_flush,
                              const cmd_options_t *opts,
@@ -178,5 +177,3 @@ void cmd_destroy_flush(cmd_flush_t *flush) {
   sfree(flush->identifiers);
   flush->identifiers_num = 0;
 } /* void cmd_destroy_flush */
-
-/* vim: set sw=4 ts=4 tw=78 noexpandtab : */

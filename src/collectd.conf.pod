@@ -4878,7 +4878,7 @@ so the values will not loop.
 =item B<ReportStats> B<true>|B<false>
 
 The network plugin cannot only receive and send statistics, it can also create
-statistics about itself. Collected data included the number of received and
+statistics about itself. Collectd data included the number of received and
 sent octets and packets, the length of the receive queue and the number of
 values handled. When set to B<true>, the I<Network plugin> will make these
 statistics available. Defaults to B<false>.
@@ -7972,6 +7972,12 @@ B<uuid> means use the guest's UUID.
 You can also specify combinations of the B<name> and B<uuid> fields.
 For example B<name uuid> means to concatenate the guest name and UUID
 (with a literal colon character between, thus I<"foo:1234-1234-1234-1234">).
+
+=item B<Instances> B<integer>
+
+How many read instances you want to use for this plugin. The default is one,
+and the sensible setting is a multiple of the B<ReadThreads> value.
+If you are not sure, just use the default setting.
 
 =back
 
