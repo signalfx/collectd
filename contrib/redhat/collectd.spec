@@ -236,7 +236,7 @@
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
 Version:	5.7.0
-Release:	2%{?dist}
+Release:	0%{?dist}
 URL:		https://collectd.org
 Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
 License:	GPLv2
@@ -2594,13 +2594,13 @@ fi
 * Tue Nov 29 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.0-2
 - Disable redis plugin on RHEL 6, hiredis has been retired from EPEL6
 
+* Mon Oct 17 2016 SignalFx <support+rpm@signalfx.com> 5.6.1-sfx0
+- Package for 5.6.1
+
 * Mon Oct 10 2016 Marc Fournier <marc.fournier@camptocamp.com> - 5.7.0-1
 - New PRE-RELEASE version
 - New plugins enabled by default: hugepages, write_prometheus
 - New plugins disabled by default: dpdkstat, intel_rdt
-
-* Mon Oct 17 2016 SignalFx <support+rpm@signalfx.com> 5.6.1-sfx0
-- Package for 5.6.1
 
 * Mon Oct 10 2016 Victor Demonchy <v.demonchy@criteo.com> - 5.6.1-1
 - New upstream version
