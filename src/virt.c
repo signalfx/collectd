@@ -504,6 +504,29 @@ static int lv_config(const char *key, const char *value) {
   return -1;
 }
 
+static int lv_connect(void) {
+  if (conn == NULL) {
+    /* `conn_string == NULL' is acceptable. */
+    conn = virConnectOpenReadOnly(conn_string);
+    if (conn == NULL) {
+      c_complain(LOG_ERR, &conn_complain,
+                 PLUGIN_NAME " plugin: Unable to connect: "
+                             "virConnectOpenReadOnly failed.");
+      return -1;
+    }
+  }
+  c_release(LOG_NOTICE, &conn_complain,
+            PLUGIN_NAME " plugin: Connection established.");
+  return 0;
+}
+
+static void lv_disconnect(void) {
+  if (conn != NULL)
+    virConnectClose(conn);
+  conn = NULL;
+  WARNING(PLUGIN_NAME " plugin: closed connection to libvirt");
+}
+
 static int lv_read(user_data_t *ud) {
   time_t t;
   struct lv_read_instance *inst = NULL;
@@ -517,18 +540,10 @@ static int lv_read(user_data_t *ud) {
   inst = ud->data;
   state = &inst->read_state;
 
-  if (inst->id == 0 && conn == NULL) {
-    /* `conn_string == NULL' is acceptable. */
-    conn = virConnectOpenReadOnly(conn_string);
-    if (conn == NULL) {
-      c_complain(LOG_ERR, &conn_complain,
-                 PLUGIN_NAME " plugin: Unable to connect: "
-                             "virConnectOpenReadOnly failed.");
+  if (inst->id == 0) {
+    if (lv_connect() < 0)
       return -1;
-    }
   }
-  c_release(LOG_NOTICE, &conn_complain,
-            PLUGIN_NAME " plugin: Connection established.");
 
   time(&t);
 
@@ -536,9 +551,8 @@ static int lv_read(user_data_t *ud) {
   if ((last_refresh == (time_t)0) ||
       ((interval > 0) && ((last_refresh + interval) <= t))) {
     if (refresh_lists(inst) != 0) {
-      if (conn != NULL)
-        virConnectClose(conn);
-      conn = NULL;
+      if (inst->id == 0)
+        lv_disconnect();
       return -1;
     }
     last_refresh = t;
@@ -732,6 +746,9 @@ static int lv_init(void) {
   if (virInitialize() != 0)
     return -1;
 
+  if (lv_connect() != 0)
+    return -1;
+
   DEBUG(PLUGIN_NAME " plugin: starting %i instances", nr_instances);
 
   for (int i = 0; i < nr_instances; ++i)
@@ -919,10 +936,10 @@ static int refresh_lists(struct lv_read_instance *inst) {
       }
 
       /* Block devices. */
-      char *bd_xmlpath = "/domain/devices/disk/target[@dev]";
+      const char *bd_xmlpath = "/domain/devices/disk/target[@dev]";
       if (blockdevice_format == source)
         bd_xmlpath = "/domain/devices/disk/source[@dev]";
-      xpath_obj = xmlXPathEval((xmlChar *)bd_xmlpath, xpath_ctx);
+      xpath_obj = xmlXPathEval((const xmlChar *)bd_xmlpath, xpath_ctx);
 
       if (xpath_obj == NULL || xpath_obj->type != XPATH_NODESET ||
           xpath_obj->nodesetval == NULL)
@@ -1161,9 +1178,7 @@ static int lv_shutdown(void) {
     lv_fini_instance(i);
   }
 
-  if (conn != NULL)
-    virConnectClose(conn);
-  conn = NULL;
+  lv_disconnect();
 
   ignorelist_free(il_domains);
   il_domains = NULL;

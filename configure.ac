@@ -5341,6 +5341,11 @@ if test "x$with_libyajl" = "xyes"; then
     [with_libyajl="no (yajl/yajl_parse.h not found)"]
   )
 
+  AC_CHECK_HEADERS([yajl/yajl_tree.h],
+    [with_libyajl2="yes"],
+    [with_libyajl2="no (yajl/yajl_tree.h not found)"]
+  )
+
   AC_CHECK_HEADERS([yajl/yajl_version.h])
 
   CPPFLAGS="$SAVE_CPPFLAGS"
@@ -5353,6 +5358,11 @@ if test "x$with_libyajl" = "xyes"; then
   AC_CHECK_LIB([yajl], [yajl_alloc],
     [with_libyajl="yes"],
     [with_libyajl="no (Symbol 'yajl_alloc' not found)"]
+  )
+
+  AC_CHECK_LIB([yajl], [yajl_tree_parse],
+    [with_libyajl2="yes"],
+    [with_libyajl2="no (Symbol 'yajl_tree_parse' not found)"]
   )
 
   LDFLAGS="$SAVE_LDFLAGS"
@@ -5877,10 +5887,12 @@ plugin_ipvs="no"
 plugin_irq="no"
 plugin_load="no"
 plugin_log_logstash="no"
+plugin_mcelog="no"
 plugin_memory="no"
 plugin_multimeter="no"
 plugin_nfs="no"
 plugin_numa="no"
+plugin_ovs_events="no"
 plugin_perl="no"
 plugin_pinba="no"
 plugin_processes="no"
@@ -5925,6 +5937,7 @@ if test "x$ac_system" = "xLinux"; then
   plugin_irq="yes"
   plugin_load="yes"
   plugin_lvm="yes"
+  plugin_mcelog="yes"
   plugin_memory="yes"
   plugin_nfs="yes"
   plugin_numa="yes"
@@ -6068,6 +6081,7 @@ if test "x$have_sysctl" = "xyes"; then
     plugin_swap="yes"
   fi
 fi
+
 if test "x$have_sysctlbyname" = "xyes"; then
   plugin_contextswitch="yes"
   plugin_cpu="yes"
@@ -6124,6 +6138,10 @@ fi
 
 if test "x$with_libyajl" = "xyes"; then
   plugin_log_logstash="yes"
+fi
+
+if test "x$with_libyajl" = "xyes" && test "x$with_libyajl2" = "xyes"; then
+  plugin_ovs_events="yes"
 fi
 
 if test "x$with_libperl" = "xyes" && test "x$c_cv_have_perl_ithreads" = "xyes"; then
@@ -6251,7 +6269,7 @@ AC_PLUGIN([dbi],                 [$with_libdbi],            [General database st
 AC_PLUGIN([df],                  [$plugin_df],              [Filesystem usage statistics])
 AC_PLUGIN([disk],                [$plugin_disk],            [Disk usage statistics])
 AC_PLUGIN([dns],                 [$with_libpcap],           [DNS traffic analysis])
-AC_PLUGIN([dpdkstat],            [$plugin_dpdkstat],        [Stats & Status from DPDK])
+AC_PLUGIN([dpdkstat],            [$plugin_dpdkstat],        [Stats from DPDK])
 AC_PLUGIN([drbd],                [$plugin_drbd],            [DRBD statistics])
 AC_PLUGIN([email],               [yes],                     [EMail statistics])
 AC_PLUGIN([entropy],             [$plugin_entropy],         [Entropy statistics])
@@ -6286,6 +6304,7 @@ AC_PLUGIN([match_regex],         [yes],                     [The regex match])
 AC_PLUGIN([match_timediff],      [yes],                     [The timediff match])
 AC_PLUGIN([match_value],         [yes],                     [The value match])
 AC_PLUGIN([mbmon],               [yes],                     [Query mbmond])
+AC_PLUGIN([mcelog],              [$plugin_mcelog],          [Machine Check Exceptions notifications])
 AC_PLUGIN([md],                  [$have_linux_raid_md_u_h], [md (Linux software RAID) devices])
 AC_PLUGIN([memcachec],           [$with_libmemcached],      [memcachec statistics])
 AC_PLUGIN([memcached],           [yes],                     [memcached statistics])
@@ -6311,6 +6330,7 @@ AC_PLUGIN([onewire],             [$with_libowcapi],         [OneWire sensor stat
 AC_PLUGIN([openldap],            [$with_libldap],           [OpenLDAP statistics])
 AC_PLUGIN([openvpn],             [yes],                     [OpenVPN client statistics])
 AC_PLUGIN([oracle],              [$with_oracle],            [Oracle plugin])
+AC_PLUGIN([ovs_events],          [$plugin_ovs_events],      [OVS events plugin])
 AC_PLUGIN([perl],                [$plugin_perl],            [Embed a Perl interpreter])
 AC_PLUGIN([pf],                  [$have_net_pfvar_h],       [BSD packet filter (PF) statistics])
 # FIXME: Check for libevent, too.
@@ -6536,15 +6556,8 @@ AC_SUBST([AM_CXXFLAGS])
 
 AC_CONFIG_FILES([ \
   Makefile \
-  bindings/Makefile \
-  bindings/java/Makefile \
-  proto/Makefile \
-  src/Makefile \
   src/collectd.conf \
-  src/daemon/Makefile \
-  src/libcollectdclient/Makefile \
   src/libcollectdclient/libcollectdclient.pc \
-  src/liboconfig/Makefile \
 ])
 
 AC_OUTPUT
@@ -6716,6 +6729,7 @@ AC_MSG_RESULT([    match_regex . . . . . $enable_match_regex])
 AC_MSG_RESULT([    match_timediff  . . . $enable_match_timediff])
 AC_MSG_RESULT([    match_value . . . . . $enable_match_value])
 AC_MSG_RESULT([    mbmon . . . . . . . . $enable_mbmon])
+AC_MSG_RESULT([    mcelog  . . . . . . . $enable_mcelog])
 AC_MSG_RESULT([    md  . . . . . . . . . $enable_md])
 AC_MSG_RESULT([    memcachec . . . . . . $enable_memcachec])
 AC_MSG_RESULT([    memcached . . . . . . $enable_memcached])
@@ -6741,6 +6755,7 @@ AC_MSG_RESULT([    onewire . . . . . . . $enable_onewire])
 AC_MSG_RESULT([    openldap  . . . . . . $enable_openldap])
 AC_MSG_RESULT([    openvpn . . . . . . . $enable_openvpn])
 AC_MSG_RESULT([    oracle  . . . . . . . $enable_oracle])
+AC_MSG_RESULT([    ovs_events  . . . . . $enable_ovs_events])
 AC_MSG_RESULT([    perl  . . . . . . . . $enable_perl])
 AC_MSG_RESULT([    pf  . . . . . . . . . $enable_pf])
 AC_MSG_RESULT([    pinba . . . . . . . . $enable_pinba])

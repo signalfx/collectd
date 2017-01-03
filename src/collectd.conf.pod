@@ -2391,18 +2391,23 @@ extended NIC stats API in DPDK.
 B<Synopsis:>
 
  <Plugin "dpdkstat">
-    Coremask "0x4"
-    MemoryChannels "4"
-    ProcessType "secondary"
-    FilePrefix "rte"
-    EnabledPortMask 0xffff
-    PortName "interface1"
-    PortName "interface2"
+   <EAL>
+     Coremask "0x4"
+     MemoryChannels "4"
+     ProcessType "secondary"
+     FilePrefix "rte"
+     SocketMemory "1024"
+   </EAL>
+   EnabledPortMask 0xffff
+   PortName "interface1"
+   PortName "interface2"
  </Plugin>
 
 B<Options:>
 
-=over 4
+=head3 The EAL block
+
+=over 5
 
 =item B<Coremask> I<Mask>
 
@@ -2425,7 +2430,11 @@ The prefix text used for hugepage filenames. The filename will be set to
 =item B<SocketMemory> I<MB>
 
 A string containing amount of Memory to allocate from hugepages on specific
-sockets in MB
+sockets in MB. This is an optional value.
+
+=back
+
+=over 4
 
 =item B<EnabledPortMask> I<Mask>
 
@@ -3319,6 +3328,28 @@ Hostname to connect to. Defaults to B<127.0.0.1>.
 =item B<Port> I<Port>
 
 TCP-Port to connect to. Defaults to B<411>.
+
+=back
+
+=head2 Plugin C<mcelog>
+
+The C<mcelog plugin> uses mcelog to retrieve machine check exceptions.
+
+By default the plugin connects to B<"/var/run/mcelog-client"> to check if the
+mcelog server is running. When the server is running, the plugin will tail the
+specified logfile to retrieve machine check exception information and send a
+notification with the details from the logfile. The plugin will use the mcelog
+client protocol to retrieve memory related machine check exceptions.
+
+=over 4
+
+=item B<McelogClientSocket> I<Path>
+Connect to the mcelog client socket using the UNIX domain socket at I<Path>.
+Defaults to B<"/var/run/mcelog-client">.
+
+=item B<McelogLogfile> I<Path>
+
+The mcelog file to parse. Defaults to B<"/var/log/mcelog">.
 
 =back
 
@@ -5430,6 +5461,68 @@ blocks you want to refer to must be placed above the database block you want to
 refer to them from.
 
 =back
+
+=head2 Plugin C<ovs_events>
+
+The I<ovs_events> plugin monitors the link status of I<Open vSwitch> (OVS)
+connected interfaces, dispatches the values to collectd and sends the
+notification whenever the link state change occurs. This plugin uses OVS
+database to get a link state change notification.
+
+B<Synopsis:>
+
+ <Plugin "ovs_events">
+   Port 6640
+   Address "127.0.0.1"
+   Socket "/var/run/openvswitch/db.sock"
+   Interfaces "br0" "veth0"
+   SendNotification false
+ </Plugin>
+
+The plugin provides the following configuration options:
+
+=over 4
+
+=item B<Address> I<node>
+
+The address of the OVS DB server JSON-RPC interface used by the plugin. To
+enable the interface, OVS DB daemon should be running with C<--remote=ptcp:>
+option. See L<ovsdb-server(1)> for more details. The option may be either
+network hostname, IPv4 numbers-and-dots notation or IPv6 hexadecimal string
+format. Defaults to B<'localhost'>.
+
+=item B<Port> I<service>
+
+TCP-port to connect to. Either a service name or a port number may be given.
+Defaults to B<6640>.
+
+=item B<Socket> I<path>
+
+The UNIX domain socket path of OVS DB server JSON-RPC interface used by the
+plugin. To enable the interface, the OVS DB daemon should be running with
+C<--remote=punix:> option. See L<ovsdb-server(1)> for more details. If this
+option is set, B<Address> and B<Port> options are ignored.
+
+=item B<Interfaces> [I<ifname> ...]
+
+List of interface names to be monitored by this plugin. If this option is not
+specified or is empty then all OVS connected interfaces on all bridges are
+monitored.
+
+Default: empty (all interfaces on all bridges are monitored)
+
+=item B<SendNotification> I<true|false>
+
+If set to true, OVS link notifications (interface status and OVS DB connection
+terminate) are sent to collectd. Default value is false.
+
+=back
+
+B<Note:> By default, the global interval setting is used within which to
+retrieve the OVS link status. To configure a plugin-specific interval, please
+use B<Interval> option of the OVS B<LoadPlugin> block settings. For milliseconds
+simple divide the time by 1000 for example if the desired interval is 50ms, set
+interval to 0.05.
 
 =head2 Plugin C<perl>
 
@@ -8149,6 +8242,8 @@ packets.
 Synopsis:
 
  <Plugin write_tsdb>
+   ResolveInterval 60
+   ResolveJitter 60
    <Node "example">
      Host "tsd-1.my.domain"
      Port "4242"
@@ -8157,7 +8252,36 @@ Synopsis:
  </Plugin>
 
 The configuration consists of one or more E<lt>B<Node>E<nbsp>I<Name>E<gt>
-blocks. Inside the B<Node> blocks, the following options are recognized:
+blocks and global directives.
+
+Global directives are:
+
+=over 4
+
+=item B<ResolveInterval> I<seconds>
+
+=item B<ResolveJitter> I<seconds>
+
+When I<collectd> connects to a TSDB node, it will request the hostname from
+DNS. This can become a problem if the TSDB node is unavailable or badly
+configured because collectd will request DNS in order to reconnect for every
+metric, which can flood your DNS. So you can cache the last value for
+I<ResolveInterval> seconds.
+Defaults to the I<Interval> of the I<write_tsdb plugin>, e.g. 10E<nbsp>seconds.
+
+You can also define a jitter, a random interval to wait in addition to
+I<ResolveInterval>. This prevents all your collectd servers to resolve the
+hostname at the same time when the connection fails.
+Defaults to the I<Interval> of the I<write_tsdb plugin>, e.g. 10E<nbsp>seconds.
+
+B<Note:> If the DNS resolution has already been successful when the socket
+closes, the plugin will try to reconnect immediately with the cached
+information. DNS is queried only when the socket is closed for a longer than
+I<ResolveInterval> + I<ResolveJitter> seconds.
+
+=back
+
+Inside the B<Node> blocks, the following options are recognized:
 
 =over 4
 

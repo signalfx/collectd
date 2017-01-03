@@ -88,6 +88,7 @@
 %define with_lvm 0%{!?_without_lvm:1}
 %define with_madwifi 0%{!?_without_madwifi:1}
 %define with_mbmon 0%{!?_without_mbmon:1}
+%define with_mcelog 0%{!?_without_mcelog:1}
 %define with_md 0%{!?_without_md:1}
 %define with_memcachec 0%{!?_without_memcachec:1}
 %define with_memcached 0%{!?_without_memcached:1}
@@ -109,6 +110,7 @@
 %define with_olsrd 0%{!?_without_olsrd:1}
 %define with_openldap 0%{!?_without_openldap:1}
 %define with_openvpn 0%{!?_without_openvpn:1}
+%define with_ovs_events 0%{!?_without_ovs_events:1}
 %define with_perl 0%{!?_without_perl:1}
 %define with_pinba 0%{!?_without_pinba:1}
 %define with_ping 0%{!?_without_ping:1}
@@ -227,6 +229,7 @@
 %define with_cpusleep 0
 %define with_gps 0
 %define with_mqtt 0
+%define with_ovs_events 0
 %define with_redis 0
 %define with_rrdcached 0
 %define with_write_redis 0
@@ -236,7 +239,7 @@
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
 Version:	5.7.0
-Release:	2%{?dist}
+Release:	4%{?dist}
 URL:		https://collectd.org
 Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
 License:	GPLv2
@@ -538,6 +541,16 @@ This plugin collects size of “Logical Volumes” (LV) and “Volume Groups” 
 of Linux' “Logical Volume Manager” (LVM).
 %endif
 
+%if %{with_mcelog}
+%package mcelog
+Summary:	Mcelog plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description mcelog
+This plugin monitors machine check exceptions reported by mcelog and generates
+appropriate notifications when machine check exceptions are detected.
+%endif
+
 %if %{with_memcachec}
 %package memcachec
 Summary:	Memcachec plugin for collectd
@@ -651,6 +664,18 @@ Requires:      %{name}%{?_isa} = %{version}-%{release}
 BuildRequires: openldap-devel
 %description openldap
 This plugin reads monitoring information from OpenLDAP's cn=Monitor subtree.
+%endif
+
+%if %{with_ovs_events}
+%package ovs_events
+Summary:       Open vSwitch events plugin for collectd
+Group:         System Environment/Daemons
+Requires:      %{name}%{?_isa} = %{version}-%{release}
+BuildRequires: yajl-devel
+%description ovs_events
+This plugin monitors the link status of Open vSwitch (OVS) connected
+interfaces, dispatches the values to collectd and sends notifications
+whenever a link state change occurs in the OVS database.
 %endif
 
 %if %{with_perl}
@@ -1279,6 +1304,12 @@ Collectd utilities
 %define _with_mbmon --disable-mbmon
 %endif
 
+%if %{with_mcelog}
+%define _with_mcelog --enable-mcelog
+%else
+%define _with_mbmon --disable-mcelog
+%endif
+
 %if %{with_md}
 %define _with_md --enable-md
 %else
@@ -1427,6 +1458,12 @@ Collectd utilities
 %define _with_oracle --enable-oracle
 %else
 %define _with_oracle --disable-oracle
+%endif
+
+%if %{with_ovs_events}
+%define _with_ovs_events --enable-ovs_events
+%else
+%define _with_ovs_events --disable-ovs_events
 %endif
 
 %if %{with_perl}
@@ -1834,6 +1871,7 @@ Collectd utilities
 	%{?_with_lvm} \
 	%{?_with_madwifi} \
 	%{?_with_mbmon} \
+	%{?_with_mcelog} \
 	%{?_with_md} \
 	%{?_with_memcachec} \
 	%{?_with_memcached} \
@@ -1859,6 +1897,7 @@ Collectd utilities
 	%{?_with_openldap} \
 	%{?_with_openvpn} \
 	%{?_with_oracle} \
+	%{?_with_ovs_events} \
 	%{?_with_perl} \
 	%{?_with_pf} \
 	%{?_with_pinba} \
@@ -2133,6 +2172,9 @@ fi
 %if %{with_mbmon}
 %{_libdir}/%{name}/mbmon.so
 %endif
+%if %{with_mcelog}
+%{_libdir}/%{name}/mcelog.so
+%endif
 %if %{with_md}
 %{_libdir}/%{name}/md.so
 %endif
@@ -2165,6 +2207,9 @@ fi
 %endif
 %if %{with_olsrd}
 %{_libdir}/%{name}/olsrd.so
+%endif
+%if %{with_ovs_events}
+%{_libdir}/%{name}/ovs_events.so
 %endif
 %if %{with_powerdns}
 %{_libdir}/%{name}/powerdns.so
@@ -2586,6 +2631,12 @@ fi
 %doc contrib/
 
 %changelog
+* Sat Dec 31 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.0-4
+- Add new ovs_events plugin
+
+* Sat Dec 31 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.0-3
+- Add new mcelog plugin
+
 * Tue Nov 29 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.0-2
 - Disable redis plugin on RHEL 6, hiredis has been retired from EPEL6
 
