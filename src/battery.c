@@ -350,11 +350,9 @@ static int sysfs_file_to_buffer(char const *dir, /* {{{ */
   ssnprintf(filename, sizeof(filename), "%s/%s/%s", dir, power_supply,
             basename);
 
-  status = (int)read_file_contents(filename, buffer, buffer_size - 1);
+  status = (int)read_file_contents(filename, buffer, buffer_size);
   if (status < 0)
     return status;
-
-  buffer[status] = '\0';
 
   strstripnewline(buffer);
   return 0;
@@ -366,7 +364,7 @@ static int sysfs_file_to_gauge(char const *dir, /* {{{ */
                                char const *power_supply, char const *basename,
                                gauge_t *ret_value) {
   int status;
-  char buffer[32];
+  char buffer[32] = "";
 
   status =
       sysfs_file_to_buffer(dir, power_supply, basename, buffer, sizeof(buffer));
