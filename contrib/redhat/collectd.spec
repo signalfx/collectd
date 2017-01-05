@@ -2588,7 +2588,7 @@ fi
 
 %changelog
 
-* Fri Jan 06 2017 SignalFx <support+rpm@signalfx.com> 5.7.0-sfx0
+* Wed Dec 14 2016 SignalFx <support+rpm@signalfx.com> 5.7.0-sfx0
 - Package for 5.7.0
 
 * Tue Nov 29 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.0-2
