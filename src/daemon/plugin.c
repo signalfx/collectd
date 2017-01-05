@@ -153,11 +153,12 @@ static const char *plugin_get_dir(void) {
     return (plugindir);
 }
 
-static int plugin_update_internal_statistics() { /* {{{ */
+static int plugin_update_internal_statistics(void) { /* {{{ */
   gauge_t copy_write_queue_length = (gauge_t)write_queue_length;
 
   /* Initialize `vl' */
   value_list_t vl = VALUE_LIST_INIT;
+  vl.interval = cf_get_default_interval();
   sstrncpy(vl.plugin, "collectd", sizeof(vl.plugin));
 
   /* Write queue */
