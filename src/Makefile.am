@@ -276,6 +276,7 @@ if BUILD_PLUGIN_CHRONY
 pkglib_LTLIBRARIES += chrony.la
 chrony_la_SOURCES = chrony.c
 chrony_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+chrony_la_LIBADD = -lm
 endif
 
 if BUILD_PLUGIN_CONNTRACK
@@ -827,7 +828,7 @@ if BUILD_PLUGIN_NOTIFY_EMAIL
 pkglib_LTLIBRARIES += notify_email.la
 notify_email_la_SOURCES = notify_email.c
 notify_email_la_LDFLAGS = $(PLUGIN_LDFLAGS)
-notify_email_la_LIBADD = -lesmtp -lssl -lcrypto
+notify_email_la_LIBADD = -lesmtp
 endif
 
 if BUILD_PLUGIN_NOTIFY_NAGIOS

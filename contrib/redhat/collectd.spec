@@ -150,6 +150,7 @@
 %define with_write_log 0%{!?_without_write_log:1}
 %define with_write_prometheus 0%{!?_without_write_prometheus:1}
 %define with_write_redis 0%{!?_without_write_redis:1}
+%define with_write_riemann 0%{!?_without_write_riemann:1}
 %define with_write_sensu 0%{!?_without_write_sensu:1}
 %define with_write_tsdb 0%{!?_without_write_tsdb:1}
 %define with_xmms 0%{!?_without_xmms:0%{?_has_xmms}}
@@ -195,8 +196,6 @@
 %define with_write_kafka 0%{!?_without_write_kafka:0}
 # plugin write_mongodb disabled, requires libmongoc
 %define with_write_mongodb 0%{!?_without_write_mongodb:0}
-# plugin write_riemann disabled, requires a new enough riemann_c_client
-%define with_write_riemann 0%{!?_without_write_riemann:0}
 # plugin xencpu disabled, requires xen-devel from non-default repo
 %define with_xencpu 0%{!?_without_xencpu:0}
 # plugin zone disabled, requires Solaris
@@ -220,6 +219,7 @@
 %define with_turbostat 0
 %define with_write_prometheus 0
 %define with_write_redis 0
+%define with_write_riemann 0
 %endif
 
 # Plugins not buildable on RHEL < 7
@@ -230,13 +230,14 @@
 %define with_redis 0
 %define with_rrdcached 0
 %define with_write_redis 0
+%define with_write_riemann 0
 %define with_xmms 0
 %endif
 
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
-Version:	5.7.0
-Release:	0%{?dist}
+Version:	5.7.1
+Release:	%{?dist}
 URL:		https://collectd.org
 Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
 License:	GPLv2
@@ -246,6 +247,7 @@ BuildRequires:	libgcrypt-devel, kernel-headers, libtool-ltdl-devel, libcap-devel
 Vendor:		collectd development team <collectd@verplant.org>
 
 %if 0%{?fedora} || 0%{?rhel} >= 7
+BuildRequires:		xfsprogs-devel
 %{?systemd_requires}
 BuildRequires:		systemd
 %else
@@ -858,7 +860,7 @@ The Write Redis plugin stores values in Redis, a “data structures server”.
 Summary:	riemann plugin for collectd
 Group:		System Environment/Daemons
 Requires:	%{name}%{?_isa} = %{version}-%{release}
-BuildRequires:	protobuf-c-devel
+BuildRequires:	riemann-c-client-devel >= 1.6
 %description write_riemann
 The riemann plugin submits values to Riemann, an event stream processor.
 %endif
@@ -2587,9 +2589,21 @@ fi
 %doc contrib/
 
 %changelog
+* Thu April 04 2017 SignalFx <support+rpm@signalfx.com> 5.7.1-sfx0
+- Package for 5.7.1
+
+* Sun Mar 05 2017 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.1-2
+- Don't enable XFS support on RHEL6, it is missing for i386
+
+* Wed Feb 22 2017 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.1-2
+- Enable XFS support in df plugin
+- Fix bogus date in changelog
 
 * Fri Jan 06 2017 SignalFx <support+rpm@signalfx.com> 5.7.0-sfx0
 - Package for 5.7.0
+
+* Sun Jan 01 2017 Marc Fournier <marc.fournier@camptocamp.com> - 5.7.1-1
+- New upstream version
 
 * Tue Nov 29 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.0-2
 - Disable redis plugin on RHEL 6, hiredis has been retired from EPEL6
