@@ -308,8 +308,10 @@ static int df_read(void) {
             (gauge_t)((float_t)(blk_reserved) / statbuf.f_blocks * 100));
         df_submit_one(disk_name, "percent_bytes", "used",
                       (gauge_t)((float_t)(blk_used) / statbuf.f_blocks * 100));
-      } else
+      } else {
+        cu_mount_freelist(mnt_list);
         return (-1);
+      }
     }
 
     /* inode handling */
@@ -339,8 +341,10 @@ static int df_read(void) {
           df_submit_one(
               disk_name, "percent_inodes", "used",
               (gauge_t)((float_t)(inode_used) / statbuf.f_files * 100));
-        } else
+        } else {
+          cu_mount_freelist(mnt_list);
           return (-1);
+        }
       }
       if (values_absolute) {
         df_submit_one(disk_name, "df_inodes", "free", (gauge_t)inode_free);
