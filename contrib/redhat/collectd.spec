@@ -237,7 +237,7 @@
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
 Version:	5.7.1
-Release:	%{?dist}
+Release:	0%{?dist}
 URL:		https://collectd.org
 Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
 License:	GPLv2
@@ -2589,7 +2589,7 @@ fi
 %doc contrib/
 
 %changelog
-* Thu April 04 2017 SignalFx <support+rpm@signalfx.com> 5.7.1-sfx0
+* Thu Apr 06 2017 SignalFx <support+rpm@signalfx.com> 5.7.1-sfx0
 - Package for 5.7.1
 
 * Sun Mar 05 2017 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.1-2
