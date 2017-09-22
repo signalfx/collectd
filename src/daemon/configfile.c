@@ -124,6 +124,26 @@ static int cf_default_typesdb = 1;
  * Functions to handle register/unregister, search, and other plugin related
  * stuff
  */
+void cf_destroy_all(void) {
+
+    cf_callback_t *cf_this;
+    cf_callback_t *cf_next;
+    for (cf_this = first_callback; cf_this != NULL; cf_this = cf_next) {
+        cf_next = cf_this->next;
+        free(cf_this);
+    }
+    first_callback = NULL;
+
+    cf_complex_callback_t *ccf_this;
+    cf_complex_callback_t *ccf_next;
+    for (ccf_this = complex_callback_head; ccf_this != NULL; ccf_this = ccf_next) {
+        ccf_next = ccf_this->next;
+        free(ccf_this->type);
+        free(ccf_this);
+    }
+    complex_callback_head = NULL;
+}
+
 static cf_callback_t *cf_search(const char *type) {
   cf_callback_t *cf_cb;
 

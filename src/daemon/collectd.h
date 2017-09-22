@@ -313,3 +313,4 @@ extern cdtime_t interval_g;
 extern int timeout_g;
 
 #endif /* COLLECTD_H */
+
