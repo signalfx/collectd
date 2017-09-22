@@ -160,7 +160,7 @@ class GenericJMXConfMBean
   } /* }}} */
 
   public int query (MBeanServerConnection conn, PluginData pd, /* {{{ */
-      String instance_prefix)
+      String instance_prefix, String instance_suffix)
   {
     Set<ObjectName> names;
     Iterator<ObjectName> iter;
@@ -226,6 +226,10 @@ class GenericJMXConfMBean
         if (i > 0)
           instance.append ("-");
         instance.append (instanceList.get (i));
+      }
+
+      if (instance_suffix != null) {
+        instance.append(instance_suffix);
       }
 
       pd_tmp.setPluginInstance (instance.toString ());
