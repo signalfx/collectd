@@ -43,6 +43,8 @@
 void cf_unregister(const char *type);
 void cf_unregister_complex(const char *type);
 
+void cf_destroy_all(void);
+
 /*
  * DESCRIPTION
  *  `cf_register' is called by plugins that wish to receive config keys. The

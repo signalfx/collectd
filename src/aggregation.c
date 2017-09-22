@@ -136,10 +136,7 @@ static void agg_instance_destroy(agg_instance_t *inst) /* {{{ */
   sfree(inst->state_max);
   sfree(inst->state_stddev);
 
-  memset(inst, 0, sizeof(*inst));
-  inst->ds_type = -1;
-  inst->min = NAN;
-  inst->max = NAN;
+  free(inst);
 } /* }}} void agg_instance_destroy */
 
 static int agg_instance_create_name(agg_instance_t *inst, /* {{{ */
@@ -745,8 +742,18 @@ static int agg_write(data_set_t const *ds, value_list_t const *vl, /* {{{ */
   return status;
 } /* }}} int agg_write */
 
+static int agg_shutdown(void) {
+  INFO("agg_shutdown called!");
+
+  lookup_destroy(lookup);
+  lookup = NULL;
+
+  return 0;
+} /* }}} int agg_shutdown */
+
 void module_register(void) {
   plugin_register_complex_config("aggregation", agg_config);
   plugin_register_read("aggregation", agg_read);
   plugin_register_write("aggregation", agg_write, /* user_data = */ NULL);
+  plugin_register_shutdown("aggregation", agg_shutdown);
 }

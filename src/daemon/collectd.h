@@ -266,3 +266,4 @@
 #include "globals.h"
 
 #endif /* COLLECTD_H */
+

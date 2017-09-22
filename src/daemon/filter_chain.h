@@ -100,4 +100,6 @@ int fc_default_action(const data_set_t *ds, value_list_t *vl);
  */
 int fc_configure(const oconfig_item_t *ci);
 
+void fc_destroy_all(void);
+
 #endif /* FILTER_CHAIN_H */
