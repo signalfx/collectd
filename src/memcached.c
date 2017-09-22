@@ -66,6 +66,7 @@ struct memcached_s {
   char *connport;
   int fd;
   prev_t prev;
+  _Bool report_host;
 };
 typedef struct memcached_s memcached_t;
 
@@ -322,7 +323,7 @@ static int memcached_query_daemon(char *buffer, size_t buffer_size,
 
 static void memcached_init_vl(value_list_t *vl, memcached_t const *st) {
   sstrncpy(vl->plugin, "memcached", sizeof(vl->plugin));
-  if (st->host != NULL)
+  if (st->host != NULL && st->report_host == 1)
     sstrncpy(vl->host, st->host, sizeof(vl->host));
   if (st->name != NULL)
     sstrncpy(vl->plugin_instance, st->name, sizeof(vl->plugin_instance));
@@ -715,6 +716,7 @@ static int config_add_instance(oconfig_item_t *ci) {
   st->socket = NULL;
   st->connhost = NULL;
   st->connport = NULL;
+  st->report_host = 1;
 
   st->fd = -1;
 
@@ -737,6 +739,8 @@ static int config_add_instance(oconfig_item_t *ci) {
       status = cf_util_get_string(child, &st->connhost);
     else if (strcasecmp("Port", child->key) == 0)
       status = cf_util_get_service(child, &st->connport);
+    else if (strcasecmp("ReportHost", child->key) == 0)
+      status = cf_util_get_boolean(child, &st->report_host);
     else {
       WARNING("memcached plugin: Option `%s' not allowed here.", child->key);
       status = -1;
