@@ -50,7 +50,9 @@ class GenericJMXConfConnection
   private String _username = null;
   private String _password = null;
   private String _host = null;
+  private String _service_name = null;
   private String _instance_prefix = null;
+  private String _instance_suffix = null;
   private String _service_url = null;
   private JMXConnector _jmx_connector = null;
   private MBeanServerConnection _mbean_connection = null;
@@ -85,12 +87,20 @@ class GenericJMXConfConnection
 
   private String getHost () /* {{{ */
   {
+    String host;
     if (this._host != null)
     {
-      return (this._host);
+      host = this._host;
+    }
+    else if (this._service_name != null) {
+      host = Collectd.getHostname() + "[hostHasService=" + this._service_name + "]";
+    }
+    else {
+      host = Collectd.getHostname();
     }
 
-    return Collectd.getHostname();
+    Collectd.logDebug("GenericJMXConfConnection: Using hostname of " + host);
+    return host;
   } /* }}} String getHost */
 
   private void connect () /* {{{ */
@@ -181,6 +191,14 @@ class GenericJMXConfConnection
         if (tmp != null)
           this._host = tmp;
       }
+      else if (child.getKey ().equalsIgnoreCase ("ServiceName"))
+      {
+        String tmp = getConfigString (child);
+        if (tmp != null) {
+          this._service_name = tmp;
+          Collectd.logInfo("GenericJMXConfConnection: Using ServiceName '" + this._service_name + "'. Metrics will report using the hostname configured by collectd");
+        }
+      }
       else if (child.getKey ().equalsIgnoreCase ("User"))
       {
         String tmp = getConfigString (child);
@@ -204,6 +222,12 @@ class GenericJMXConfConnection
         String tmp = getConfigString (child);
         if (tmp != null)
           this._instance_prefix = tmp;
+      }
+      else if (child.getKey ().equalsIgnoreCase ("InstanceSuffix"))
+      {
+        String tmp = getConfigString (child);
+        if (tmp != null)
+          this._instance_suffix = tmp;
       }
       else if (child.getKey ().equalsIgnoreCase ("Collect"))
       {
@@ -249,6 +273,7 @@ class GenericJMXConfConnection
 
     pd = new PluginData ();
     pd.setHost (this.getHost ());
+
     pd.setPlugin ("GenericJMX");
 
     for (int i = 0; i < this._mbeans.size (); i++)
@@ -256,7 +281,7 @@ class GenericJMXConfConnection
       int status;
 
       status = this._mbeans.get (i).query (this._mbean_connection, pd,
-          this._instance_prefix);
+          this._instance_prefix, this._instance_suffix);
       if (status != 0)
       {
         disconnect ();

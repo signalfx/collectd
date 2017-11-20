@@ -83,6 +83,8 @@ static void mr_free_regex(mr_regex_t *r) /* {{{ */
 
   if (r->next != NULL)
     mr_free_regex(r->next);
+
+  sfree(r);
 } /* }}} void mr_free_regex */
 
 static void mr_free_match(mr_match_t *m) /* {{{ */
