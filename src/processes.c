@@ -230,6 +230,8 @@ static procstat_t *list_head_g = NULL;
 static _Bool want_init = 1;
 static _Bool report_ctx_switch = 0;
 
+static char proc_fs_path[64] = "/proc";
+
 #if HAVE_THREAD_INFO
 static mach_port_t port_host_self;
 static mach_port_t port_task_self;
@@ -561,6 +563,8 @@ static int ps_config(oconfig_item_t *ci) {
       ps_list_register(c->values[0].value.string, c->values[1].value.string);
     } else if (strcasecmp(c->key, "CollectContextSwitch") == 0) {
       cf_util_get_boolean(c, &report_ctx_switch);
+    }  else if (strcasecmp(c->key, "ProcFSPath") == 0) {
+      cf_util_get_string_buffer(c, proc_fs_path, sizeof(proc_fs_path));
     } else {
       ERROR("processes plugin: The `%s' configuration option is not "
             "understood and will be ignored.",
@@ -742,9 +746,9 @@ static void ps_submit_fork_rate(derive_t value) {
 /* ------- additional functions for KERNEL_LINUX/HAVE_THREAD_INFO ------- */
 #if KERNEL_LINUX
 static int ps_read_tasks_status(procstat_entry_t *ps) {
-  char dirname[64];
+  char dirname[128];
   DIR *dh;
-  char filename[64];
+  char filename[128];
   FILE *fh;
   struct dirent *ent;
   derive_t cswitch_vol = 0;
@@ -753,7 +757,7 @@ static int ps_read_tasks_status(procstat_entry_t *ps) {
   char *fields[8];
   int numfields;
 
-  ssnprintf(dirname, sizeof(dirname), "/proc/%li/task", ps->id);
+  ssnprintf(dirname, sizeof(dirname), "%s/%li/task", proc_fs_path, ps->id);
 
   if ((dh = opendir(dirname)) == NULL) {
     DEBUG("Failed to open directory `%s'", dirname);
@@ -768,7 +772,7 @@ static int ps_read_tasks_status(procstat_entry_t *ps) {
 
     tpid = ent->d_name;
 
-    ssnprintf(filename, sizeof(filename), "/proc/%li/task/%s/status", ps->id,
+    ssnprintf(filename, sizeof(filename), "%s/%li/task/%s/status", proc_fs_path, ps->id,
               tpid);
     if ((fh = fopen(filename, "r")) == NULL) {
       DEBUG("Failed to open file `%s'", filename);
@@ -818,7 +822,7 @@ static int ps_read_tasks_status(procstat_entry_t *ps) {
 static procstat_t *ps_read_status(long pid, procstat_t *ps) {
   FILE *fh;
   char buffer[1024];
-  char filename[64];
+  char filename[128];
   unsigned long lib = 0;
   unsigned long exe = 0;
   unsigned long data = 0;
@@ -826,7 +830,7 @@ static procstat_t *ps_read_status(long pid, procstat_t *ps) {
   char *fields[8];
   int numfields;
 
-  ssnprintf(filename, sizeof(filename), "/proc/%li/status", pid);
+  ssnprintf(filename, sizeof(filename), "%s/%li/status", proc_fs_path, pid);
   if ((fh = fopen(filename, "r")) == NULL)
     return (NULL);
 
@@ -874,12 +878,12 @@ static procstat_t *ps_read_status(long pid, procstat_t *ps) {
 static int ps_read_io(procstat_entry_t *ps) {
   FILE *fh;
   char buffer[1024];
-  char filename[64];
+  char filename[128];
 
   char *fields[8];
   int numfields;
 
-  ssnprintf(filename, sizeof(filename), "/proc/%li/io", ps->id);
+  ssnprintf(filename, sizeof(filename), "%s/%li/io", proc_fs_path, ps->id);
   if ((fh = fopen(filename, "r")) == NULL)
     return (-1);
 
@@ -946,7 +950,7 @@ static void ps_fill_details(const procstat_t *ps, procstat_entry_t *entry) {
 } /* void ps_fill_details (...) */
 
 static int ps_read_process(long pid, procstat_t *ps, char *state) {
-  char filename[64];
+  char filename[128];
   char buffer[1024];
 
   char *fields[64];
@@ -969,7 +973,7 @@ static int ps_read_process(long pid, procstat_t *ps, char *state) {
 
   memset(ps, 0, sizeof(procstat_t));
 
-  ssnprintf(filename, sizeof(filename), "/proc/%li/stat", pid);
+  ssnprintf(filename, sizeof(filename), "%s/%li/stat", proc_fs_path, pid);
 
   status = read_file_contents(filename, buffer, sizeof(buffer) - 1);
   if (status <= 0)
@@ -1084,7 +1088,7 @@ static char *ps_get_cmdline(long pid, char *name, char *buf, size_t buf_len) {
   if ((pid < 1) || (NULL == buf) || (buf_len < 2))
     return NULL;
 
-  ssnprintf(file, sizeof(file), "/proc/%li/cmdline", pid);
+  ssnprintf(file, sizeof(file), "%s/%li/cmdline", proc_fs_path, pid);
 
   errno = 0;
   fd = open(file, O_RDONLY);
@@ -1167,14 +1171,16 @@ static char *ps_get_cmdline(long pid, char *name, char *buf, size_t buf_len) {
 
 static int read_fork_rate(void) {
   FILE *proc_stat;
+  char proc_stat_path[128];
   char buffer[1024];
   value_t value;
   _Bool value_valid = 0;
 
-  proc_stat = fopen("/proc/stat", "r");
+  snprintf(proc_stat_path, sizeof(proc_stat_path), "%s/stat", proc_fs_path);
+  proc_stat = fopen(proc_stat_path, "r");
   if (proc_stat == NULL) {
     char errbuf[1024];
-    ERROR("processes plugin: fopen (/proc/stat) failed: %s",
+    ERROR("processes plugin: fopen (%s) failed: %s", proc_stat_path,
           sstrerror(errno, errbuf, sizeof(errbuf)));
     return (-1);
   }
@@ -1215,7 +1221,7 @@ static char *ps_get_cmdline(long pid,
   psinfo_t info;
   ssize_t status;
 
-  snprintf(path, sizeof(path), "/proc/%li/psinfo", pid);
+  snprintf(path, sizeof(path), "%s/%li/psinfo", proc_fs_path, pid);
 
   status = read_file_contents(path, (void *)&info, sizeof(info));
   if ((status < 0) || (((size_t)status) != sizeof(info))) {
@@ -1240,17 +1246,17 @@ static char *ps_get_cmdline(long pid,
  * Added a few "solaris" specific process states as well
  */
 static int ps_read_process(long pid, procstat_t *ps, char *state) {
-  char filename[64];
-  char f_psinfo[64], f_usage[64];
+  char filename[128];
+  char f_psinfo[128], f_usage[128];
   char *buffer;
 
   pstatus_t *myStatus;
   psinfo_t *myInfo;
   prusage_t *myUsage;
 
-  snprintf(filename, sizeof(filename), "/proc/%li/status", pid);
-  snprintf(f_psinfo, sizeof(f_psinfo), "/proc/%li/psinfo", pid);
-  snprintf(f_usage, sizeof(f_usage), "/proc/%li/usage", pid);
+  snprintf(filename, sizeof(filename), "%s/%li/status", proc_fs_path, pid);
+  snprintf(f_psinfo, sizeof(f_psinfo), "%s/%li/psinfo", proc_fs_path, pid);
+  snprintf(f_usage, sizeof(f_usage), "%s/%li/usage", proc_fs_path, pid);
 
   buffer = calloc(1, sizeof(pstatus_t));
   read_file_contents(filename, buffer, sizeof(pstatus_t));
@@ -1664,9 +1670,9 @@ static int ps_read(void) {
   running = sleeping = zombies = stopped = paging = blocked = 0;
   ps_list_reset();
 
-  if ((proc = opendir("/proc")) == NULL) {
+  if ((proc = opendir(proc_fs_path)) == NULL) {
     char errbuf[1024];
-    ERROR("Cannot open `/proc': %s", sstrerror(errno, errbuf, sizeof(errbuf)));
+    ERROR("Cannot open `%s': %s", proc_fs_path, sstrerror(errno, errbuf, sizeof(errbuf)));
     return (-1);
   }
 
@@ -2192,7 +2198,7 @@ static int ps_read(void) {
 
   ps_list_reset();
 
-  proc = opendir("/proc");
+  proc = opendir(proc_fs_path);
   if (proc == NULL)
     return (-1);
 
