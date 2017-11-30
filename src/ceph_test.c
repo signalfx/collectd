@@ -123,7 +123,7 @@ DEF_TEST(traverse_json) {
       {"WBThrottle.ios_wb.type", "2"},
       {"WBThrottle.inodes_dirtied.type", "2"},
       {"WBThrottle.inodes_wb.type", "10"},
-      {"filestore.journal_wr_bytes", "3117"},
+      {"filestore.journal_wr_bytes.sum", "3117"},
       {"filestore.example_latency.avgcount", "42"},
       {"filestore.example_latency.sum", "4711"},
   };
@@ -187,5 +187,3 @@ int main(void) {
 
   END_TEST;
 }
-
-/* vim: set sw=2 sts=2 et : */

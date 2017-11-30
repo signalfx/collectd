@@ -27,9 +27,8 @@
 #ifndef LIBCOLLECTDCLIENT_NETWORK_BUFFER_H
 #define LIBCOLLECTDCLIENT_NETWORK_BUFFER_H 1
 
-/* FIXME */
-#include "client.h"
-#include "network.h"
+#include "collectd/network.h" /* for lcc_security_level_t */
+#include "collectd/types.h"
 
 /* Ethernet frame - (IPv6 header + UDP header) */
 #define LCC_NETWORK_BUFFER_SIZE_DEFAULT 1452
@@ -55,4 +54,3 @@ int lcc_network_buffer_get(lcc_network_buffer_t *nb, void *buffer,
                            size_t *buffer_size);
 
 #endif /* LIBCOLLECTDCLIENT_NETWORK_BUFFER_H */
-/* vim: set sw=2 sts=2 et : */

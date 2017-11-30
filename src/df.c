@@ -70,7 +70,7 @@ static int df_init(void) {
   if (il_fstype == NULL)
     il_fstype = ignorelist_create(1);
 
-  return (0);
+  return 0;
 }
 
 static int df_config(const char *key, const char *value) {
@@ -78,16 +78,16 @@ static int df_config(const char *key, const char *value) {
 
   if (strcasecmp(key, "Device") == 0) {
     if (ignorelist_add(il_device, value))
-      return (1);
-    return (0);
+      return 1;
+    return 0;
   } else if (strcasecmp(key, "MountPoint") == 0) {
     if (ignorelist_add(il_mountpoint, value))
-      return (1);
-    return (0);
+      return 1;
+    return 0;
   } else if (strcasecmp(key, "FSType") == 0) {
     if (ignorelist_add(il_fstype, value))
-      return (1);
-    return (0);
+      return 1;
+    return 0;
   } else if (strcasecmp(key, "IgnoreSelected") == 0) {
     if (IS_TRUE(value)) {
       ignorelist_set_invert(il_device, 0);
@@ -98,26 +98,26 @@ static int df_config(const char *key, const char *value) {
       ignorelist_set_invert(il_mountpoint, 1);
       ignorelist_set_invert(il_fstype, 1);
     }
-    return (0);
+    return 0;
   } else if (strcasecmp(key, "ReportByDevice") == 0) {
     if (IS_TRUE(value))
       by_device = 1;
 
-    return (0);
+    return 0;
   } else if (strcasecmp(key, "ReportInodes") == 0) {
     if (IS_TRUE(value))
       report_inodes = 1;
     else
       report_inodes = 0;
 
-    return (0);
+    return 0;
   } else if (strcasecmp(key, "ValuesAbsolute") == 0) {
     if (IS_TRUE(value))
       values_absolute = 1;
     else
       values_absolute = 0;
 
-    return (0);
+    return 0;
   } else if (strcasecmp(key, "ValuesPercentage") == 0) {
     if (IS_TRUE(value))
       values_percentage = 1;
@@ -137,7 +137,7 @@ static int df_config(const char *key, const char *value) {
     return (0);
   }
 
-  return (-1);
+  return -1;
 }
 
 __attribute__((nonnull(2))) static void df_submit_one(char *plugin_instance,
@@ -170,7 +170,7 @@ static int df_read(void) {
   mnt_list = NULL;
   if (cu_mount_getlist(&mnt_list) == NULL) {
     ERROR("df plugin: cu_mount_getlist failed.");
-    return (-1);
+    return -1;
   }
 
   for (cu_mount_t *mnt_ptr = mnt_list; mnt_ptr != NULL;
@@ -310,7 +310,7 @@ static int df_read(void) {
                       (gauge_t)((float_t)(blk_used) / statbuf.f_blocks * 100));
       } else {
         cu_mount_freelist(mnt_list);
-        return (-1);
+        return -1;
       }
     }
 
@@ -343,7 +343,7 @@ static int df_read(void) {
               (gauge_t)((float_t)(inode_used) / statbuf.f_files * 100));
         } else {
           cu_mount_freelist(mnt_list);
-          return (-1);
+          return -1;
         }
       }
       if (values_absolute) {
@@ -357,7 +357,7 @@ static int df_read(void) {
 
   cu_mount_freelist(mnt_list);
 
-  return (0);
+  return 0;
 } /* int df_read */
 
 void module_register(void) {

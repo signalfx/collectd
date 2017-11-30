@@ -53,6 +53,7 @@ struct web_page_s;
 typedef struct web_page_s web_page_t;
 struct web_page_s /* {{{ */
 {
+  char *plugin_name;
   char *instance;
 
   char *url;
@@ -97,11 +98,11 @@ static size_t cc_curl_callback(void *buf, /* {{{ */
 
   len = size * nmemb;
   if (len == 0)
-    return (len);
+    return len;
 
   wp = user_data;
   if (wp == NULL)
-    return (0);
+    return 0;
 
   if ((wp->buffer_fill + len) >= wp->buffer_size) {
     char *temp;
@@ -111,7 +112,7 @@ static size_t cc_curl_callback(void *buf, /* {{{ */
     temp = realloc(wp->buffer, temp_size);
     if (temp == NULL) {
       ERROR("curl plugin: realloc failed.");
-      return (0);
+      return 0;
     }
     wp->buffer = temp;
     wp->buffer_size = temp_size;
@@ -121,7 +122,7 @@ static size_t cc_curl_callback(void *buf, /* {{{ */
   wp->buffer_fill += len;
   wp->buffer[wp->buffer_fill] = 0;
 
-  return (len);
+  return len;
 } /* }}} size_t cc_curl_callback */
 
 static void cc_web_match_free(web_match_t *wm) /* {{{ */
@@ -146,6 +147,7 @@ static void cc_web_page_free(web_page_t *wp) /* {{{ */
     curl_easy_cleanup(wp->curl);
   wp->curl = NULL;
 
+  sfree(wp->plugin_name);
   sfree(wp->instance);
 
   sfree(wp->url);
@@ -170,16 +172,16 @@ static int cc_config_append_string(const char *name,
   struct curl_slist *temp = NULL;
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING)) {
     WARNING("curl plugin: `%s' needs exactly one string argument.", name);
-    return (-1);
+    return -1;
   }
 
   temp = curl_slist_append(*dest, ci->values[0].value.string);
   if (temp == NULL)
-    return (-1);
+    return -1;
 
   *dest = temp;
 
-  return (0);
+  return 0;
 } /* }}} int cc_config_append_string */
 
 static int cc_config_add_match_dstype(int *dstype_ret, /* {{{ */
@@ -188,7 +190,7 @@ static int cc_config_add_match_dstype(int *dstype_ret, /* {{{ */
 
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING)) {
     WARNING("curl plugin: `DSType' needs exactly one string argument.");
-    return (-1);
+    return -1;
   }
 
   if (strncasecmp("Gauge", ci->values[0].value.string, strlen("Gauge")) == 0) {
@@ -243,11 +245,11 @@ static int cc_config_add_match_dstype(int *dstype_ret, /* {{{ */
   if (dstype == 0) {
     WARNING("curl plugin: `%s' is not a valid argument to `DSType'.",
             ci->values[0].value.string);
-    return (-1);
+    return -1;
   }
 
   *dstype_ret = dstype;
-  return (0);
+  return 0;
 } /* }}} int cc_config_add_match_dstype */
 
 static int cc_config_add_match(web_page_t *page, /* {{{ */
@@ -262,7 +264,7 @@ static int cc_config_add_match(web_page_t *page, /* {{{ */
   match = calloc(1, sizeof(*match));
   if (match == NULL) {
     ERROR("curl plugin: calloc failed.");
-    return (-1);
+    return -1;
   }
 
   status = 0;
@@ -309,7 +311,7 @@ static int cc_config_add_match(web_page_t *page, /* {{{ */
 
   if (status != 0) {
     cc_web_match_free(match);
-    return (status);
+    return status;
   }
 
   match->match =
@@ -317,7 +319,7 @@ static int cc_config_add_match(web_page_t *page, /* {{{ */
   if (match->match == NULL) {
     ERROR("curl plugin: match_create_simple failed.");
     cc_web_match_free(match);
-    return (-1);
+    return -1;
   } else {
     web_match_t *prev;
 
@@ -331,7 +333,7 @@ static int cc_config_add_match(web_page_t *page, /* {{{ */
       prev->next = match;
   }
 
-  return (0);
+  return 0;
 } /* }}} int cc_config_add_match */
 
 static int cc_page_init_curl(web_page_t *wp) /* {{{ */
@@ -339,7 +341,7 @@ static int cc_page_init_curl(web_page_t *wp) /* {{{ */
   wp->curl = curl_easy_init();
   if (wp->curl == NULL) {
     ERROR("curl plugin: curl_easy_init failed.");
-    return (-1);
+    return -1;
   }
 
   curl_easy_setopt(wp->curl, CURLOPT_NOSIGNAL, 1L);
@@ -347,7 +349,6 @@ static int cc_page_init_curl(web_page_t *wp) /* {{{ */
   curl_easy_setopt(wp->curl, CURLOPT_WRITEDATA, wp);
   curl_easy_setopt(wp->curl, CURLOPT_USERAGENT, COLLECTD_USERAGENT);
   curl_easy_setopt(wp->curl, CURLOPT_ERRORBUFFER, wp->curl_errbuf);
-  curl_easy_setopt(wp->curl, CURLOPT_URL, wp->url);
   curl_easy_setopt(wp->curl, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(wp->curl, CURLOPT_MAXREDIRS, 50L);
 
@@ -366,11 +367,11 @@ static int cc_page_init_curl(web_page_t *wp) /* {{{ */
     wp->credentials = malloc(credentials_size);
     if (wp->credentials == NULL) {
       ERROR("curl plugin: malloc failed.");
-      return (-1);
+      return -1;
     }
 
-    ssnprintf(wp->credentials, credentials_size, "%s:%s", wp->user,
-              (wp->pass == NULL) ? "" : wp->pass);
+    snprintf(wp->credentials, credentials_size, "%s:%s", wp->user,
+             (wp->pass == NULL) ? "" : wp->pass);
     curl_easy_setopt(wp->curl, CURLOPT_USERPWD, wp->credentials);
 #endif
 
@@ -395,7 +396,7 @@ static int cc_page_init_curl(web_page_t *wp) /* {{{ */
                      (long)CDTIME_T_TO_MS(plugin_get_interval()));
 #endif
 
-  return (0);
+  return 0;
 } /* }}} int cc_page_init_curl */
 
 static int cc_config_add_page(oconfig_item_t *ci) /* {{{ */
@@ -405,14 +406,15 @@ static int cc_config_add_page(oconfig_item_t *ci) /* {{{ */
 
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING)) {
     WARNING("curl plugin: `Page' blocks need exactly one string argument.");
-    return (-1);
+    return -1;
   }
 
   page = calloc(1, sizeof(*page));
   if (page == NULL) {
     ERROR("curl plugin: calloc failed.");
-    return (-1);
+    return -1;
   }
+  page->plugin_name = NULL;
   page->url = NULL;
   page->user = NULL;
   page->pass = NULL;
@@ -428,7 +430,7 @@ static int cc_config_add_page(oconfig_item_t *ci) /* {{{ */
   if (page->instance == NULL) {
     ERROR("curl plugin: strdup failed.");
     sfree(page);
-    return (-1);
+    return -1;
   }
 
   /* Process all children */
@@ -436,7 +438,9 @@ static int cc_config_add_page(oconfig_item_t *ci) /* {{{ */
   for (int i = 0; i < ci->children_num; i++) {
     oconfig_item_t *child = ci->children + i;
 
-    if (strcasecmp("URL", child->key) == 0)
+    if (strcasecmp("Plugin", child->key) == 0)
+      status = cf_util_get_string(child, &page->plugin_name);
+    else if (strcasecmp("URL", child->key) == 0)
       status = cf_util_get_string(child, &page->url);
     else if (strcasecmp("User", child->key) == 0)
       status = cf_util_get_string(child, &page->user);
@@ -501,7 +505,7 @@ static int cc_config_add_page(oconfig_item_t *ci) /* {{{ */
 
   if (status != 0) {
     cc_web_page_free(page);
-    return (status);
+    return status;
   }
 
   /* Add the new page to the linked list */
@@ -516,7 +520,7 @@ static int cc_config_add_page(oconfig_item_t *ci) /* {{{ */
     prev->next = page;
   }
 
-  return (0);
+  return 0;
 } /* }}} int cc_config_add_page */
 
 static int cc_config(oconfig_item_t *ci) /* {{{ */
@@ -545,20 +549,20 @@ static int cc_config(oconfig_item_t *ci) /* {{{ */
 
   if ((success == 0) && (errors > 0)) {
     ERROR("curl plugin: All statements failed.");
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* }}} int cc_config */
 
 static int cc_init(void) /* {{{ */
 {
   if (pages_g == NULL) {
     INFO("curl plugin: No pages have been defined.");
-    return (-1);
+    return -1;
   }
   curl_global_init(CURL_GLOBAL_SSL);
-  return (0);
+  return 0;
 } /* }}} int cc_init */
 
 static void cc_submit(const web_page_t *wp, const web_match_t *wm, /* {{{ */
@@ -567,7 +571,8 @@ static void cc_submit(const web_page_t *wp, const web_match_t *wm, /* {{{ */
 
   vl.values = &value;
   vl.values_len = 1;
-  sstrncpy(vl.plugin, "curl", sizeof(vl.plugin));
+  sstrncpy(vl.plugin, (wp->plugin_name != NULL) ? wp->plugin_name : "curl",
+           sizeof(vl.plugin));
   sstrncpy(vl.plugin_instance, wp->instance, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, wm->type, sizeof(vl.type));
   if (wm->instance != NULL)
@@ -582,7 +587,8 @@ static void cc_submit_response_code(const web_page_t *wp, long code) /* {{{ */
 
   vl.values = &(value_t){.gauge = (gauge_t)code};
   vl.values_len = 1;
-  sstrncpy(vl.plugin, "curl", sizeof(vl.plugin));
+  sstrncpy(vl.plugin, (wp->plugin_name != NULL) ? wp->plugin_name : "curl",
+           sizeof(vl.plugin));
   sstrncpy(vl.plugin_instance, wp->instance, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, "response_code", sizeof(vl.type));
 
@@ -595,7 +601,8 @@ static void cc_submit_response_time(const web_page_t *wp, /* {{{ */
 
   vl.values = &(value_t){.gauge = response_time};
   vl.values_len = 1;
-  sstrncpy(vl.plugin, "curl", sizeof(vl.plugin));
+  sstrncpy(vl.plugin, (wp->plugin_name != NULL) ? wp->plugin_name : "curl",
+           sizeof(vl.plugin));
   sstrncpy(vl.plugin_instance, wp->instance, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, "response_time", sizeof(vl.type));
 
@@ -611,17 +618,20 @@ static int cc_read_page(web_page_t *wp) /* {{{ */
     start = cdtime();
 
   wp->buffer_fill = 0;
+
+  curl_easy_setopt(wp->curl, CURLOPT_URL, wp->url);
+
   status = curl_easy_perform(wp->curl);
   if (status != CURLE_OK) {
     ERROR("curl plugin: curl_easy_perform failed with status %i: %s", status,
           wp->curl_errbuf);
-    return (-1);
+    return -1;
   }
 
   if (wp->response_time)
     cc_submit_response_time(wp, CDTIME_T_TO_DOUBLE(cdtime() - start));
   if (wp->stats != NULL)
-    curl_stats_dispatch(wp->stats, wp->curl, hostname_g, "curl", wp->instance);
+    curl_stats_dispatch(wp->stats, wp->curl, NULL, "curl", wp->instance);
 
   if (wp->response_code) {
     long response_code = 0;
@@ -654,7 +664,7 @@ static int cc_read_page(web_page_t *wp) /* {{{ */
     match_value_reset(mv);
   } /* for (wm = wp->matches; wm != NULL; wm = wm->next) */
 
-  return (0);
+  return 0;
 } /* }}} int cc_read_page */
 
 static int cc_read(void) /* {{{ */
@@ -662,7 +672,7 @@ static int cc_read(void) /* {{{ */
   for (web_page_t *wp = pages_g; wp != NULL; wp = wp->next)
     cc_read_page(wp);
 
-  return (0);
+  return 0;
 } /* }}} int cc_read */
 
 static int cc_shutdown(void) /* {{{ */
@@ -670,7 +680,7 @@ static int cc_shutdown(void) /* {{{ */
   cc_web_page_free(pages_g);
   pages_g = NULL;
 
-  return (0);
+  return 0;
 } /* }}} int cc_shutdown */
 
 void module_register(void) {
@@ -679,5 +689,3 @@ void module_register(void) {
   plugin_register_read("curl", cc_read);
   plugin_register_shutdown("curl", cc_shutdown);
 } /* void module_register */
-
-/* vim: set sw=2 sts=2 et fdm=marker : */

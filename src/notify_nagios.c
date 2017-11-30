@@ -141,10 +141,10 @@ static int nagios_notify(const notification_t *n, /* {{{ */
     break;
   }
 
-  ssnprintf(buffer, sizeof(buffer),
-            "[%.0f] PROCESS_SERVICE_CHECK_RESULT;%s;%s;%d;%s\n",
-            CDTIME_T_TO_DOUBLE(n->time), n->host, &svc_description[1], code,
-            n->message);
+  snprintf(buffer, sizeof(buffer),
+           "[%.0f] PROCESS_SERVICE_CHECK_RESULT;%s;%s;%d;%s\n",
+           CDTIME_T_TO_DOUBLE(n->time), n->host, &svc_description[1], code,
+           n->message);
 
   return nagios_print(buffer);
 } /* }}} int nagios_notify */
@@ -153,5 +153,3 @@ void module_register(void) {
   plugin_register_complex_config("notify_nagios", nagios_config);
   plugin_register_notification("notify_nagios", nagios_notify, NULL);
 } /* void module_register (void) */
-
-/* vim: set sw=2 sts=2 ts=8 et : */

@@ -88,10 +88,10 @@ static int vmem_config(const char *key, const char *value) {
     else
       verbose_output = 0;
   } else {
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* int vmem_config */
 
 static int vmem_read(void) {
@@ -116,7 +116,7 @@ static int vmem_read(void) {
     char errbuf[1024];
     ERROR("vmem plugin: fopen (/proc/vmstat) failed: %s",
           sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+    return -1;
   }
 
   while (fgets(buffer, sizeof(buffer), fh) != NULL) {
@@ -284,12 +284,10 @@ static int vmem_read(void) {
 
 #endif /* KERNEL_DARWIN */ 
   
-  return (0);
+  return 0;
 } /* int vmem_read */
 
 void module_register(void) {
   plugin_register_config("vmem", vmem_config, config_keys, config_keys_num);
   plugin_register_read("vmem", vmem_read);
 } /* void module_register */
-
-/* vim: set sw=2 sts=2 ts=8 : */

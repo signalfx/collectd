@@ -51,6 +51,7 @@ struct web_page_s;
 typedef struct web_page_s web_page_t;
 struct web_page_s /* {{{ */
 {
+  char *plugin_name;
   char *instance;
 
   char *server;
@@ -94,6 +95,7 @@ static void cmc_web_page_free(web_page_t *wp) /* {{{ */
     memcached_free(wp->memc);
   wp->memc = NULL;
 
+  sfree(wp->plugin_name);
   sfree(wp->instance);
   sfree(wp->server);
   sfree(wp->key);
@@ -111,29 +113,29 @@ static int cmc_page_init_memc(web_page_t *wp) /* {{{ */
   wp->memc = memcached_create(NULL);
   if (wp->memc == NULL) {
     ERROR("memcachec plugin: memcached_create failed.");
-    return (-1);
+    return -1;
   }
 
   server = memcached_servers_parse(wp->server);
   memcached_server_push(wp->memc, server);
   memcached_server_list_free(server);
 
-  return (0);
+  return 0;
 } /* }}} int cmc_page_init_memc */
 
 static int cmc_config_add_string(const char *name, char **dest, /* {{{ */
                                  oconfig_item_t *ci) {
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING)) {
     WARNING("memcachec plugin: `%s' needs exactly one string argument.", name);
-    return (-1);
+    return -1;
   }
 
   sfree(*dest);
   *dest = strdup(ci->values[0].value.string);
   if (*dest == NULL)
-    return (-1);
+    return -1;
 
-  return (0);
+  return 0;
 } /* }}} int cmc_config_add_string */
 
 static int cmc_config_add_match_dstype(int *dstype_ret, /* {{{ */
@@ -142,7 +144,7 @@ static int cmc_config_add_match_dstype(int *dstype_ret, /* {{{ */
 
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING)) {
     WARNING("memcachec plugin: `DSType' needs exactly one string argument.");
-    return (-1);
+    return -1;
   }
 
   if (strncasecmp("Gauge", ci->values[0].value.string, strlen("Gauge")) == 0) {
@@ -175,11 +177,11 @@ static int cmc_config_add_match_dstype(int *dstype_ret, /* {{{ */
   if (dstype == 0) {
     WARNING("memcachec plugin: `%s' is not a valid argument to `DSType'.",
             ci->values[0].value.string);
-    return (-1);
+    return -1;
   }
 
   *dstype_ret = dstype;
-  return (0);
+  return 0;
 } /* }}} int cmc_config_add_match_dstype */
 
 static int cmc_config_add_match(web_page_t *page, /* {{{ */
@@ -194,7 +196,7 @@ static int cmc_config_add_match(web_page_t *page, /* {{{ */
   match = calloc(1, sizeof(*match));
   if (match == NULL) {
     ERROR("memcachec plugin: calloc failed.");
-    return (-1);
+    return -1;
   }
 
   status = 0;
@@ -242,7 +244,7 @@ static int cmc_config_add_match(web_page_t *page, /* {{{ */
 
   if (status != 0) {
     cmc_web_match_free(match);
-    return (status);
+    return status;
   }
 
   match->match =
@@ -250,7 +252,7 @@ static int cmc_config_add_match(web_page_t *page, /* {{{ */
   if (match->match == NULL) {
     ERROR("memcachec plugin: match_create_simple failed.");
     cmc_web_match_free(match);
-    return (-1);
+    return -1;
   } else {
     web_match_t *prev;
 
@@ -264,7 +266,7 @@ static int cmc_config_add_match(web_page_t *page, /* {{{ */
       prev->next = match;
   }
 
-  return (0);
+  return 0;
 } /* }}} int cmc_config_add_match */
 
 static int cmc_config_add_page(oconfig_item_t *ci) /* {{{ */
@@ -275,13 +277,13 @@ static int cmc_config_add_page(oconfig_item_t *ci) /* {{{ */
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING)) {
     WARNING(
         "memcachec plugin: `Page' blocks need exactly one string argument.");
-    return (-1);
+    return -1;
   }
 
   page = calloc(1, sizeof(*page));
   if (page == NULL) {
     ERROR("memcachec plugin: calloc failed.");
-    return (-1);
+    return -1;
   }
   page->server = NULL;
   page->key = NULL;
@@ -290,7 +292,7 @@ static int cmc_config_add_page(oconfig_item_t *ci) /* {{{ */
   if (page->instance == NULL) {
     ERROR("memcachec plugin: strdup failed.");
     sfree(page);
-    return (-1);
+    return -1;
   }
 
   /* Process all children */
@@ -302,6 +304,8 @@ static int cmc_config_add_page(oconfig_item_t *ci) /* {{{ */
       status = cmc_config_add_string("Server", &page->server, child);
     else if (strcasecmp("Key", child->key) == 0)
       status = cmc_config_add_string("Key", &page->key, child);
+    else if (strcasecmp("Plugin", child->key) == 0)
+      status = cmc_config_add_string("Plugin", &page->plugin_name, child);
     else if (strcasecmp("Match", child->key) == 0)
       /* Be liberal with failing matches => don't set `status'. */
       cmc_config_add_match(page, child);
@@ -342,7 +346,7 @@ static int cmc_config_add_page(oconfig_item_t *ci) /* {{{ */
 
   if (status != 0) {
     cmc_web_page_free(page);
-    return (status);
+    return status;
   }
 
   /* Add the new page to the linked list */
@@ -357,7 +361,7 @@ static int cmc_config_add_page(oconfig_item_t *ci) /* {{{ */
     prev->next = page;
   }
 
-  return (0);
+  return 0;
 } /* }}} int cmc_config_add_page */
 
 static int cmc_config(oconfig_item_t *ci) /* {{{ */
@@ -386,19 +390,19 @@ static int cmc_config(oconfig_item_t *ci) /* {{{ */
 
   if ((success == 0) && (errors > 0)) {
     ERROR("memcachec plugin: All statements failed.");
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* }}} int cmc_config */
 
 static int cmc_init(void) /* {{{ */
 {
   if (pages_g == NULL) {
     INFO("memcachec plugin: No pages have been defined.");
-    return (-1);
+    return -1;
   }
-  return (0);
+  return 0;
 } /* }}} int cmc_init */
 
 static void cmc_submit(const web_page_t *wp, const web_match_t *wm, /* {{{ */
@@ -407,7 +411,8 @@ static void cmc_submit(const web_page_t *wp, const web_match_t *wm, /* {{{ */
 
   vl.values = &value;
   vl.values_len = 1;
-  sstrncpy(vl.plugin, "memcachec", sizeof(vl.plugin));
+  sstrncpy(vl.plugin, (wp->plugin_name != NULL) ? wp->plugin_name : "memcachec",
+           sizeof (vl.plugin));
   sstrncpy(vl.plugin_instance, wp->instance, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, wm->type, sizeof(vl.type));
   sstrncpy(vl.type_instance, wm->instance, sizeof(vl.type_instance));
@@ -423,14 +428,14 @@ static int cmc_read_page(web_page_t *wp) /* {{{ */
   int status;
 
   if (wp->memc == NULL)
-    return (-1);
+    return -1;
 
   wp->buffer = memcached_get(wp->memc, wp->key, strlen(wp->key), &string_length,
                              &flags, &rc);
   if (rc != MEMCACHED_SUCCESS) {
     ERROR("memcachec plugin: memcached_get failed: %s",
           memcached_strerror(wp->memc, rc));
-    return (-1);
+    return -1;
   }
 
   for (web_match_t *wm = wp->matches; wm != NULL; wm = wm->next) {
@@ -454,7 +459,7 @@ static int cmc_read_page(web_page_t *wp) /* {{{ */
 
   sfree(wp->buffer);
 
-  return (0);
+  return 0;
 } /* }}} int cmc_read_page */
 
 static int cmc_read(void) /* {{{ */
@@ -462,7 +467,7 @@ static int cmc_read(void) /* {{{ */
   for (web_page_t *wp = pages_g; wp != NULL; wp = wp->next)
     cmc_read_page(wp);
 
-  return (0);
+  return 0;
 } /* }}} int cmc_read */
 
 static int cmc_shutdown(void) /* {{{ */
@@ -470,7 +475,7 @@ static int cmc_shutdown(void) /* {{{ */
   cmc_web_page_free(pages_g);
   pages_g = NULL;
 
-  return (0);
+  return 0;
 } /* }}} int cmc_shutdown */
 
 void module_register(void) {
@@ -479,5 +484,3 @@ void module_register(void) {
   plugin_register_read("memcachec", cmc_read);
   plugin_register_shutdown("memcachec", cmc_shutdown);
 } /* void module_register */
-
-/* vim: set sw=2 sts=2 et fdm=marker : */

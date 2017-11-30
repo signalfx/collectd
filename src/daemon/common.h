@@ -66,9 +66,6 @@ typedef struct value_to_rate_state_s value_to_rate_state_t;
 
 char *sstrncpy(char *dest, const char *src, size_t n);
 
-__attribute__((format(printf, 3, 4))) int ssnprintf(char *dest, size_t n,
-                                                    const char *format, ...);
-
 __attribute__((format(printf, 1, 2))) char *ssnprintf_alloc(char const *format,
                                                             ...);
 
@@ -82,8 +79,7 @@ char *sstrerror(int errnum, char *buf, size_t buflen);
  *
  * DESCRIPTION
  *   Reads exactly `n' bytes or fails. Syntax and other behavior is analogous
- *   to `read(2)'. If EOF is received the file descriptor is closed and an
- *   error is returned.
+ *   to `read(2)'.
  *
  * PARAMETERS
  *   `fd'          File descriptor to write to.
@@ -94,7 +90,7 @@ char *sstrerror(int errnum, char *buf, size_t buflen);
  *   Zero upon success or non-zero if an error occurred. `errno' is set in this
  *   case.
  */
-ssize_t sread(int fd, void *buf, size_t count);
+int sread(int fd, void *buf, size_t count);
 
 /*
  * NAME
@@ -113,7 +109,7 @@ ssize_t sread(int fd, void *buf, size_t count);
  *   Zero upon success or non-zero if an error occurred. `errno' is set in this
  *   case.
  */
-ssize_t swrite(int fd, const void *buf, size_t count);
+int swrite(int fd, const void *buf, size_t count);
 
 /*
  * NAME

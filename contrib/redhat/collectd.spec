@@ -16,7 +16,7 @@
 #
 # - fetch the desired collectd release file from https://collectd.org/files/
 #   and save it in your ~/rpmbuild/SOURCES/ directory (or build your own out of
-#   the git repository: ./build.sh && ./configure && make-dist-bz2)
+#   the git repository: ./build.sh && ./configure && make dist)
 #
 # - copy this file in your ~/rpmbuild/SPECS/ directory. Make sure the
 #   "Version:" tag matches the version from the tarball.
@@ -88,6 +88,7 @@
 %define with_lvm 0%{!?_without_lvm:1}
 %define with_madwifi 0%{!?_without_madwifi:1}
 %define with_mbmon 0%{!?_without_mbmon:1}
+%define with_mcelog 0%{!?_without_mcelog:1}
 %define with_md 0%{!?_without_md:1}
 %define with_memcachec 0%{!?_without_memcachec:1}
 %define with_memcached 0%{!?_without_memcached:1}
@@ -109,6 +110,8 @@
 %define with_olsrd 0%{!?_without_olsrd:1}
 %define with_openldap 0%{!?_without_openldap:1}
 %define with_openvpn 0%{!?_without_openvpn:1}
+%define with_ovs_events 0%{!?_without_ovs_events:1}
+%define with_ovs_stats 0%{!?_without_ovs_stats:1}
 %define with_perl 0%{!?_without_perl:1}
 %define with_pinba 0%{!?_without_pinba:1}
 %define with_ping 0%{!?_without_ping:1}
@@ -124,8 +127,10 @@
 %define with_serial 0%{!?_without_serial:1}
 %define with_smart 0%{!?_without_smart:1}
 %define with_snmp 0%{!?_without_snmp:1}
+%define with_snmp_agent 0%{!?_without_snmp_agent:1}
 %define with_statsd 0%{!?_without_statsd:1}
 %define with_swap 0%{!?_without_swap:1}
+%define with_synproxy 0%{!?_without_synproxy:0}
 %define with_syslog 0%{!?_without_syslog:1}
 %define with_table 0%{!?_without_table:1}
 %define with_tail 0%{!?_without_tail:1}
@@ -166,12 +171,16 @@
 %define with_aquaero 0%{!?_without_aquaero:0}
 # plugin barometer disabled, requires a libi2c
 %define with_barometer 0%{!?_without_barometer:0}
-# plugin grpc disabled, requires protobuf-compiler >= 3.0
-%define with_grpc 0%{!?_without_grpc:0}
+# plugin dpdkevents disabled, requires libdpdk
+%define with_dpdkevents 0%{!?_without_dpdkevents:0}
 # plugin dpdkstat disabled, requires libdpdk
 %define with_dpdkstat 0%{!?_without_dpdkstat:0}
+# plugin grpc disabled, requires protobuf-compiler >= 3.0
+%define with_grpc 0%{!?_without_grpc:0}
 # plugin lpar disabled, requires AIX
 %define with_lpar 0%{!?_without_lpar:0}
+# plugin intel_pmu disabled, requires libjevents
+%define with_intel_pmu 0%{!?_without_intel_pmu:0}
 # plugin intel_rdt disabled, requires intel-cmt-cat
 %define with_intel_rdt 0%{!?_without_intel_rdt:0}
 # plugin mic disabled, requires Mic
@@ -227,6 +236,8 @@
 %define with_cpusleep 0
 %define with_gps 0
 %define with_mqtt 0
+%define with_ovs_events 0
+%define with_ovs_stats 0
 %define with_redis 0
 %define with_rrdcached 0
 %define with_write_redis 0
@@ -236,14 +247,14 @@
 
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
-Version:	5.7.2
+Version:	5.8.0
 Release:	0%{?dist}
 URL:		https://collectd.org
 Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
 License:	GPLv2
 Group:		System Environment/Daemons
 BuildRoot:	%{_tmppath}/%{name}-%{version}-root
-BuildRequires:	libgcrypt-devel, kernel-headers, libtool-ltdl-devel, libcap-devel, which
+BuildRequires:	libgcrypt-devel, kernel-headers, libcap-devel, which
 Vendor:		collectd development team <collectd@verplant.org>
 
 %if 0%{?fedora} || 0%{?rhel} >= 7
@@ -462,6 +473,16 @@ The HDDTemp plugin collects the temperature of hard disks. The temperatures are
 provided via SMART and queried by the external hddtemp daemon.
 %endif
 
+%if %{with_intel_pmu}
+%package intel_pmu
+Summary:	Intel PMU plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description intel_pmu
+The intel_pmu plugin reads performance counters provided by the Linux
+kernel perf interface.
+%endif
+
 %if %{with_intel_rdt}
 %package intel_rdt
 Summary:	Intel RDT plugin for collectd
@@ -501,8 +522,8 @@ the byte- and packet-counters of selected rules and submit them to collectd.
 Summary:	Java plugin for collectd
 Group:		System Environment/Daemons
 Requires:	%{name}%{?_isa} = %{version}-%{release}
-BuildRequires:	java-devel, jpackage-utils
-Requires:	java, jpackage-utils
+BuildRequires:	java-devel >= 1.6, jpackage-utils >= 1.6
+Requires:	java >= 1.6, jpackage-utils >= 1.6
 %description java
 This plugin for collectd allows plugins to be written in Java and executed
 in an embedded JVM.
@@ -538,6 +559,16 @@ BuildRequires:	lvm2-devel
 %description lvm
 This plugin collects size of “Logical Volumes” (LV) and “Volume Groups” (VG)
 of Linux' “Logical Volume Manager” (LVM).
+%endif
+
+%if %{with_mcelog}
+%package mcelog
+Summary:	Mcelog plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description mcelog
+This plugin monitors machine check exceptions reported by mcelog and generates
+appropriate notifications when machine check exceptions are detected.
 %endif
 
 %if %{with_memcachec}
@@ -653,6 +684,29 @@ Requires:      %{name}%{?_isa} = %{version}-%{release}
 BuildRequires: openldap-devel
 %description openldap
 This plugin reads monitoring information from OpenLDAP's cn=Monitor subtree.
+%endif
+
+%if %{with_ovs_events}
+%package ovs_events
+Summary:       Open vSwitch events plugin for collectd
+Group:         System Environment/Daemons
+Requires:      %{name}%{?_isa} = %{version}-%{release}
+BuildRequires: yajl-devel
+%description ovs_events
+This plugin monitors the link status of Open vSwitch (OVS) connected
+interfaces, dispatches the values to collectd and sends notifications
+whenever a link state change occurs in the OVS database.
+%endif
+
+%if %{with_ovs_stats}
+%package ovs_stats
+Summary:       Open vSwitch statistics plugin for collectd
+Group:         System Environment/Daemons
+Requires:      %{name}%{?_isa} = %{version}-%{release}
+BuildRequires: yajl-devel
+%description ovs_stats
+This plugin collects statictics of OVS connected bridges and
+interfaces.
 %endif
 
 %if %{with_perl}
@@ -791,6 +845,16 @@ Requires:	%{name}%{?_isa} = %{version}-%{release}
 BuildRequires:	net-snmp-devel
 %description snmp
 This plugin for collectd allows querying of network equipment using SNMP.
+%endif
+
+%if %{with_snmp_agent}
+%package snmp_agent
+Summary:	SNMP AgentX plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+BuildRequires:	net-snmp-devel
+%description snmp_agent
+This plugin for collectd to support AgentX integration.
 %endif
 
 %if %{with_varnish}
@@ -1101,6 +1165,12 @@ Collectd utilities
 %define _with_drbd --disable-drbd
 %endif
 
+%if %{with_dpdkevents}
+%define _with_dpdkevents --enable-dpdkevents
+%else
+%define _with_dpdkevents --disable-dpdkevents
+%endif
+
 %if %{with_dpdkstat}
 %define _with_dpdkstat --enable-dpdkstat
 %else
@@ -1177,6 +1247,12 @@ Collectd utilities
 %define _with_hugepages --enable-hugepages
 %else
 %define _with_hugepages --disable-hugepages
+%endif
+
+%if %{with_intel_pmu}
+%define _with_intel_pmu --enable-intel_pmu
+%else
+%define _with_intel_pmu --disable-intel_pmu
 %endif
 
 %if %{with_intel_rdt}
@@ -1279,6 +1355,12 @@ Collectd utilities
 %define _with_mbmon --enable-mbmon
 %else
 %define _with_mbmon --disable-mbmon
+%endif
+
+%if %{with_mcelog}
+%define _with_mcelog --enable-mcelog
+%else
+%define _with_mbmon --disable-mcelog
 %endif
 
 %if %{with_md}
@@ -1431,6 +1513,18 @@ Collectd utilities
 %define _with_oracle --disable-oracle
 %endif
 
+%if %{with_ovs_events}
+%define _with_ovs_events --enable-ovs_events
+%else
+%define _with_ovs_events --disable-ovs_events
+%endif
+
+%if %{with_ovs_stats}
+%define _with_ovs_stats --enable-ovs_stats
+%else
+%define _with_ovs_stats --disable-ovs_stats
+%endif
+
 %if %{with_perl}
 %define _with_perl --enable-perl --with-perl-bindings="INSTALLDIRS=vendor"
 %else
@@ -1544,6 +1638,12 @@ Collectd utilities
 %define _with_snmp --disable-snmp
 %endif
 
+%if %{with_snmp_agent}
+%define _with_snmp_agent --enable-snmp_agent
+%else
+%define _with_snmp_agent --disable-snmp_agent
+%endif
+
 %if %{with_statsd}
 %define _with_statsd --enable-statsd
 %else
@@ -1554,6 +1654,12 @@ Collectd utilities
 %define _with_swap --enable-swap
 %else
 %define _with_swap --disable-swap
+%endif
+
+%if %{with_synproxy}
+%define _with_synproxy --enable-synproxy
+%else
+%define _with_synproxy --disable-synproxy
 %endif
 
 %if %{with_syslog}
@@ -1769,7 +1875,6 @@ Collectd utilities
 %configure CFLAGS="%{optflags} -DLT_LAZY_OR_NOW=\"RTLD_LAZY|RTLD_GLOBAL\"" \
 	%{?_python_config} \
 	--disable-static \
-	--without-included-ltdl \
 	--enable-all-plugins=yes \
 	--enable-match_empty_counter \
 	--enable-match_hashed \
@@ -1808,6 +1913,7 @@ Collectd utilities
 	%{?_with_disk} \
 	%{?_with_dns} \
 	%{?_with_drbd} \
+	%{?_with_dpdkevents} \
 	%{?_with_dpdkstat} \
 	%{?_with_email} \
 	%{?_with_entropy} \
@@ -1821,6 +1927,7 @@ Collectd utilities
 	%{?_with_grpc} \
 	%{?_with_hddtemp} \
 	%{?_with_hugepages} \
+	%{?_with_intel_pmu} \
 	%{?_with_intel_rdt} \
 	%{?_with_interface} \
 	%{?_with_ipc} \
@@ -1837,6 +1944,7 @@ Collectd utilities
 	%{?_with_lvm} \
 	%{?_with_madwifi} \
 	%{?_with_mbmon} \
+	%{?_with_mcelog} \
 	%{?_with_md} \
 	%{?_with_memcachec} \
 	%{?_with_memcached} \
@@ -1862,6 +1970,8 @@ Collectd utilities
 	%{?_with_openldap} \
 	%{?_with_openvpn} \
 	%{?_with_oracle} \
+	%{?_with_ovs_events} \
+	%{?_with_ovs_stats} \
 	%{?_with_perl} \
 	%{?_with_pf} \
 	%{?_with_pinba} \
@@ -1880,8 +1990,10 @@ Collectd utilities
 	%{?_with_sigrok} \
 	%{?_with_smart} \
 	%{?_with_snmp} \
+	%{?_with_snmp_agent} \
 	%{?_with_statsd} \
 	%{?_with_swap} \
+	%{?_with_synproxy} \
 	%{?_with_syslog} \
 	%{?_with_table} \
 	%{?_with_tail_csv} \
@@ -2088,9 +2200,6 @@ fi
 %if %{with_drbd}
 %{_libdir}/%{name}/drbd.so
 %endif
-%if %{with_dpdkstat}
-%{_libdir}/%{name}/dpdkstat.so
-%endif
 %if %{with_ethstat}
 %{_libdir}/%{name}/ethstat.so
 %endif
@@ -2135,6 +2244,9 @@ fi
 %endif
 %if %{with_mbmon}
 %{_libdir}/%{name}/mbmon.so
+%endif
+%if %{with_mcelog}
+%{_libdir}/%{name}/mcelog.so
 %endif
 %if %{with_md}
 %{_libdir}/%{name}/md.so
@@ -2186,6 +2298,9 @@ fi
 %endif
 %if %{with_swap}
 %{_libdir}/%{name}/swap.so
+%endif
+%if %{with_synproxy}
+%{_libdir}/%{name}/synproxy.so
 %endif
 %if %{with_syslog}
 %{_libdir}/%{name}/syslog.so
@@ -2263,6 +2378,9 @@ fi
 %{_includedir}/collectd/network_buffer.h
 %{_includedir}/collectd/lcc_features.h
 %{_libdir}/pkgconfig/libcollectdclient.pc
+%{_includedir}/collectd/network_parse.h
+%{_includedir}/collectd/server.h
+%{_includedir}/collectd/types.h
 %{_libdir}/libcollectdclient.so
 
 %files -n libcollectdclient
@@ -2346,6 +2464,16 @@ fi
 %{_libdir}/%{name}/dbi.so
 %endif
 
+%if %{with_dpdkevents}
+%files dpdkevents
+%{_libdir}/%{name}/dpdkevents.so
+%endif
+
+%if %{with_dpdkstat}
+%files dpdkstat
+%{_libdir}/%{name}/dpdkstat.so
+%endif
+
 %if %{with_email}
 %files email
 %{_libdir}/%{name}/email.so
@@ -2369,6 +2497,11 @@ fi
 %if %{with_hddtemp}
 %files hddtemp
 %{_libdir}/%{name}/hddtemp.so
+%endif
+
+%if %{with_intel_pmu}
+%files intel_pmu
+%{_libdir}/%{name}/intel_pmu.so
 %endif
 
 %if %{with_intel_rdt}
@@ -2470,6 +2603,16 @@ fi
 %{_libdir}/%{name}/openldap.so
 %endif
 
+%if %{with_ovs_events}
+%files ovs_events
+%{_libdir}/%{name}/ovs_events.so
+%endif
+
+%if %{with_ovs_stats}
+%files ovs_stats
+%{_libdir}/%{name}/ovs_stats.so
+%endif
+
 %if %{with_perl}
 %files perl
 %{perl_vendorlib}/Collectd.pm
@@ -2537,6 +2680,11 @@ fi
 %{_libdir}/%{name}/snmp.so
 %endif
 
+%if %{with_snmp_agent}
+%files snmp_agent
+%{_libdir}/%{name}/snmp_agent.so
+%endif
+
 %if %{with_varnish}
 %files varnish
 %{_libdir}/%{name}/varnish.so
@@ -2589,14 +2737,32 @@ fi
 %doc contrib/
 
 %changelog
+* Thu Sep 28 2017 xakru <calvinxakru@gmail.com> - 5.7.1-8
+- Add new libcollectdclient/network_parse
+- Add new libcollectdclient/server
+- Add new libcollectdclient/types
+- Add new synproxy plugin
+
+* Fri Aug 18 2017 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.1-7
+- Add new intel_pmu plugin
+
 * Tue Jun 13 2017 SignalFx <support+rpm@signalfx.com> 5.7.2-sfx0
 - Package for 5.7.2
 
 * Thu Apr 06 2017 SignalFx <support+rpm@signalfx.com> 5.7.1-sfx0
 - Package for 5.7.1
 
-* Sun Mar 05 2017 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.1-2
+* Sun Mar 05 2017 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.1-6
+- Move recently added plugins to subpackages
+
+* Sun Mar 05 2017 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.1-5
+- Add new ovs_stats plugin
+
+* Sun Mar 05 2017 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.1-4
 - Don't enable XFS support on RHEL6, it is missing for i386
+
+* Sun Mar 05 2017 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.1-3
+- Add dpdkevents plugin, disabled by default
 
 * Wed Feb 22 2017 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.1-2
 - Enable XFS support in df plugin
@@ -2607,6 +2773,12 @@ fi
 
 * Sun Jan 01 2017 Marc Fournier <marc.fournier@camptocamp.com> - 5.7.1-1
 - New upstream version
+
+* Sat Dec 31 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.0-4
+- Add new ovs_events plugin
+
+* Sat Dec 31 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.0-3
+- Add new mcelog plugin
 
 * Tue Nov 29 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.7.0-2
 - Disable redis plugin on RHEL 6, hiredis has been retired from EPEL6

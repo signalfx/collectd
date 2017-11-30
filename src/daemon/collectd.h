@@ -31,35 +31,26 @@
 #include "config.h"
 #endif
 
+#include <assert.h>
+#include <ctype.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <signal.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #if HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
 #if HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
-#if STDC_HEADERS
-#include <stddef.h>
-#include <stdlib.h>
-#else
-#if HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
-#endif
-#if HAVE_STRING_H
-#if !STDC_HEADERS && HAVE_MEMORY_H
-#include <memory.h>
-#endif
-#include <string.h>
-#endif
 #if HAVE_STRINGS_H
 #include <strings.h>
-#endif
-#if HAVE_INTTYPES_H
-#include <inttypes.h>
-#endif
-#if HAVE_STDINT_H
-#include <stdint.h>
 #endif
 #if HAVE_UNISTD_H
 #include <unistd.h>
@@ -73,17 +64,8 @@
 #ifndef WIFEXITED
 #define WIFEXITED(stat_val) (((stat_val)&255) == 0)
 #endif
-#if HAVE_SIGNAL_H
-#include <signal.h>
-#endif
 #if HAVE_FCNTL_H
 #include <fcntl.h>
-#endif
-#if HAVE_ERRNO_H
-#include <errno.h>
-#endif
-#if HAVE_LIMITS_H
-#include <limits.h>
 #endif
 #if TIME_WITH_SYS_TIME
 #include <sys/time.h>
@@ -97,18 +79,6 @@
 #endif
 #if HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
-#endif
-
-#if HAVE_ASSERT_H
-#include <assert.h>
-#else
-#define assert(...) /* nop */
-#endif
-
-#if !defined(HAVE__BOOL) || !HAVE__BOOL
-typedef int _Bool;
-#undef HAVE__BOOL
-#define HAVE__BOOL 1
 #endif
 
 #if NAN_STATIC_DEFAULT
@@ -212,18 +182,8 @@ typedef int _Bool;
 #endif
 #endif
 
-#if HAVE_STDARG_H
-#include <stdarg.h>
-#endif
-#if HAVE_CTYPE_H
-#include <ctype.h>
-#endif
 #if HAVE_SYS_PARAM_H
 #include <sys/param.h>
-#endif
-
-#if HAVE_KSTAT_H
-#include <kstat.h>
 #endif
 
 #ifndef PACKAGE_NAME
@@ -276,9 +236,7 @@ typedef int _Bool;
 
 /* Only enable __attribute__() for compilers known to support it. */
 #if !defined(__clang__) && !defined(__GNUC__)
-#if !defined(__attribute__)
 #define __attribute__(x) /**/
-#endif
 #endif
 
 #if defined(COLLECT_DEBUG) && COLLECT_DEBUG && defined(__GNUC__) && __GNUC__
@@ -305,11 +263,6 @@ typedef int _Bool;
 #define GAUGE_FORMAT "%.15g"
 #endif
 
-/* Type for time as used by "utils_time.h" */
-typedef uint64_t cdtime_t;
-
-extern char hostname_g[];
-extern cdtime_t interval_g;
-extern int timeout_g;
+#include "globals.h"
 
 #endif /* COLLECTD_H */

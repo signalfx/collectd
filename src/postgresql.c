@@ -58,7 +58,7 @@
  * is ignored. */
 #define C_PSQL_PAR_APPEND(buf, buf_len, parameter, value)                      \
   if ((0 < (buf_len)) && (NULL != (value)) && ('\0' != *(value))) {            \
-    int s = ssnprintf(buf, buf_len, " %s = '%s'", parameter, value);           \
+    int s = snprintf(buf, buf_len, " %s = '%s'", parameter, value);            \
     if (0 < s) {                                                               \
       buf += s;                                                                \
       buf_len -= s;                                                            \
@@ -139,6 +139,7 @@ typedef struct {
   char *password;
 
   char *instance;
+  char *plugin_name;
 
   char *sslmode;
 
@@ -250,6 +251,8 @@ static c_psql_database_t *c_psql_database_new(const char *name) {
 
   db->instance = sstrdup(name);
 
+  db->plugin_name = NULL;
+
   db->sslmode = NULL;
 
   db->krbsrvname = NULL;
@@ -300,6 +303,8 @@ static void c_psql_database_delete(void *data) {
 
   sfree(db->instance);
 
+  sfree(db->plugin_name);
+
   sfree(db->sslmode);
 
   sfree(db->krbsrvname);
@@ -322,7 +327,7 @@ static int c_psql_connect(c_psql_database_t *db) {
   if ((!db) || (!db->database))
     return -1;
 
-  status = ssnprintf(buf, buf_len, "dbname = '%s'", db->database);
+  status = snprintf(buf, buf_len, "dbname = '%s'", db->database);
   if (0 < status) {
     buf += status;
     buf_len -= status;
@@ -335,6 +340,7 @@ static int c_psql_connect(c_psql_database_t *db) {
   C_PSQL_PAR_APPEND(buf, buf_len, "sslmode", db->sslmode);
   C_PSQL_PAR_APPEND(buf, buf_len, "krbsrvname", db->krbsrvname);
   C_PSQL_PAR_APPEND(buf, buf_len, "service", db->service);
+  C_PSQL_PAR_APPEND(buf, buf_len, "application_name", "collectd_postgresql");
 
   db->conn = PQconnectdb(conninfo);
   db->proto_version = PQprotocolVersion(db->conn);
@@ -407,7 +413,7 @@ static PGresult *c_psql_exec_query_params(c_psql_database_t *db, udb_query_t *q,
   char interval[64];
 
   if ((data == NULL) || (data->params_num == 0))
-    return (c_psql_exec_query_noparams(db, q));
+    return c_psql_exec_query_noparams(db, q);
 
   assert(db->max_params_num >= data->params_num);
 
@@ -424,9 +430,9 @@ static PGresult *c_psql_exec_query_params(c_psql_database_t *db, udb_query_t *q,
       params[i] = db->user;
       break;
     case C_PSQL_PARAM_INTERVAL:
-      ssnprintf(interval, sizeof(interval), "%.3f",
-                (db->interval > 0) ? CDTIME_T_TO_DOUBLE(db->interval)
-                                   : plugin_get_interval());
+      snprintf(interval, sizeof(interval), "%.3f",
+               (db->interval > 0) ? CDTIME_T_TO_DOUBLE(db->interval)
+                                  : plugin_get_interval());
       params[i] = interval;
       break;
     case C_PSQL_PARAM_INSTANCE:
@@ -438,8 +444,7 @@ static PGresult *c_psql_exec_query_params(c_psql_database_t *db, udb_query_t *q,
   }
 
   return PQexecParams(db->conn, udb_query_get_statement(q), data->params_num,
-                      NULL, (const char *const *)params, NULL, NULL,
-                      /* return text data */ 0);
+                      NULL, (const char *const *)params, NULL, NULL, 0);
 } /* c_psql_exec_query_params */
 
 /* db->db_lock must be locked when calling this function */
@@ -540,9 +545,11 @@ static int c_psql_exec_query(c_psql_database_t *db, udb_query_t *q,
   else
     host = db->host;
 
-  status =
-      udb_query_prepare_result(q, prep_area, host, "postgresql", db->instance,
-                               column_names, (size_t)column_num, db->interval);
+  status = udb_query_prepare_result(
+      q, prep_area, host,
+      (db->plugin_name != NULL) ? db->plugin_name : "postgresql", db->instance,
+      column_names, (size_t)column_num, db->interval);
+
   if (0 != status) {
     log_err("udb_query_prepare_result failed with status %i.", status);
     BAIL_OUT(-1);
@@ -630,7 +637,7 @@ static char *values_name_to_sqlarray(const data_set_t *ds, char *string,
   str_len = string_len;
 
   for (size_t i = 0; i < ds->ds_num; ++i) {
-    int status = ssnprintf(str_ptr, str_len, ",'%s'", ds->ds[i].name);
+    int status = snprintf(str_ptr, str_len, ",'%s'", ds->ds[i].name);
 
     if (status < 1)
       return NULL;
@@ -668,10 +675,10 @@ static char *values_type_to_sqlarray(const data_set_t *ds, char *string,
     int status;
 
     if (store_rates)
-      status = ssnprintf(str_ptr, str_len, ",'gauge'");
+      status = snprintf(str_ptr, str_len, ",'gauge'");
     else
-      status = ssnprintf(str_ptr, str_len, ",'%s'",
-                         DS_TYPE_TO_STRING(ds->ds[i].type));
+      status = snprintf(str_ptr, str_len, ",'%s'",
+                        DS_TYPE_TO_STRING(ds->ds[i].type));
 
     if (status < 1) {
       str_len = 0;
@@ -723,7 +730,7 @@ static char *values_to_sqlarray(const data_set_t *ds, const value_list_t *vl,
 
     if (ds->ds[i].type == DS_TYPE_GAUGE)
       status =
-          ssnprintf(str_ptr, str_len, "," GAUGE_FORMAT, vl->values[i].gauge);
+          snprintf(str_ptr, str_len, "," GAUGE_FORMAT, vl->values[i].gauge);
     else if (store_rates) {
       if (rates == NULL)
         rates = uc_get_rate(ds, vl);
@@ -733,13 +740,13 @@ static char *values_to_sqlarray(const data_set_t *ds, const value_list_t *vl,
         return NULL;
       }
 
-      status = ssnprintf(str_ptr, str_len, ",%lf", rates[i]);
+      status = snprintf(str_ptr, str_len, ",%lf", rates[i]);
     } else if (ds->ds[i].type == DS_TYPE_COUNTER)
-      status = ssnprintf(str_ptr, str_len, ",%llu", vl->values[i].counter);
+      status = snprintf(str_ptr, str_len, ",%llu", vl->values[i].counter);
     else if (ds->ds[i].type == DS_TYPE_DERIVE)
-      status = ssnprintf(str_ptr, str_len, ",%" PRIi64, vl->values[i].derive);
+      status = snprintf(str_ptr, str_len, ",%" PRIi64, vl->values[i].derive);
     else if (ds->ds[i].type == DS_TYPE_ABSOLUTE)
-      status = ssnprintf(str_ptr, str_len, ",%" PRIu64, vl->values[i].absolute);
+      status = snprintf(str_ptr, str_len, ",%" PRIu64, vl->values[i].absolute);
 
     if (status < 1) {
       str_len = 0;
@@ -937,7 +944,7 @@ static int c_psql_shutdown(void) {
 
     if (db->writers_num > 0) {
       char cb_name[DATA_MAX_NAME_LEN];
-      ssnprintf(cb_name, sizeof(cb_name), "postgresql-%s", db->database);
+      snprintf(cb_name, sizeof(cb_name), "postgresql-%s", db->database);
 
       if (!had_flush) {
         plugin_unregister_flush("postgresql");
@@ -1009,7 +1016,7 @@ static int config_query_param_add(udb_query_t *q, oconfig_item_t *ci) {
   }
 
   data->params_num++;
-  return (0);
+  return 0;
 } /* config_query_param_add */
 
 static int config_query_callback(udb_query_t *q, oconfig_item_t *ci) {
@@ -1018,7 +1025,7 @@ static int config_query_callback(udb_query_t *q, oconfig_item_t *ci) {
 
   log_err("Option not allowed within a Query block: `%s'", ci->key);
 
-  return (-1);
+  return -1;
 } /* config_query_callback */
 
 static int config_add_writer(oconfig_item_t *ci, c_psql_writer_t *src_writers,
@@ -1140,6 +1147,8 @@ static int c_psql_config_database(oconfig_item_t *ci) {
       cf_util_get_string(c, &db->password);
     else if (0 == strcasecmp(c->key, "Instance"))
       cf_util_get_string(c, &db->instance);
+    else if (0 == strcasecmp(c->key, "Plugin"))
+      cf_util_get_string(c, &db->plugin_name);
     else if (0 == strcasecmp(c->key, "SSLMode"))
       cf_util_get_string(c, &db->sslmode);
     else if (0 == strcasecmp(c->key, "KRBSrvName"))
@@ -1195,7 +1204,7 @@ static int c_psql_config_database(oconfig_item_t *ci) {
     }
   }
 
-  ssnprintf(cb_name, sizeof(cb_name), "postgresql-%s", db->instance);
+  snprintf(cb_name, sizeof(cb_name), "postgresql-%s", db->instance);
 
   user_data_t ud = {.data = db, .free_func = c_psql_database_delete};
 
@@ -1265,5 +1274,3 @@ void module_register(void) {
   plugin_register_complex_config("postgresql", c_psql_config);
   plugin_register_shutdown("postgresql", c_psql_shutdown);
 } /* module_register */
-
-/* vim: set sw=4 ts=4 tw=78 noexpandtab : */

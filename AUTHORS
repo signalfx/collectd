@@ -116,6 +116,9 @@ Dan Ryder <daryder at cisco.com>
 David Bacher <drbacher at gmail.com>
  - serial plugin.
 
+Denis Pompilio <denis.pompilio at gmail.com>
+ - Improvements to the write_http plugin.
+
 Doug MacEachern <dougm at hyperic.com>
  - The `-T' option (config testing mode).
  - OpenVPN plugin.
@@ -285,6 +288,11 @@ Scott Sanders <scott at jssjr.com>
 Sebastien Pahl <sebastien.pahl at dotcloud.com>
  - AMQP plugin.
 
+Serhiy Pshyk <serhiyx.pshyk at intel.com>
+ - intel_pmu plugin
+ - intel_rdt plugin
+ - snmp_agent plugin
+
 Simon Kuhnle <simon at blarzwurst.de>
  - OpenBSD code for the cpu and memory plugins.
 
@@ -293,6 +301,9 @@ Sjoerd van der Berg <harekiet at gmail.com>
 
 Stefan Hacker <stefan.hacker at web.de>
  - teamspeak2 plugin.
+
+Steven Bell <stv.bell07 at gmail.com>
+ - nut plugin.
 
 Sven Trenkel <collectd at semidefinite.de>
  - netapp plugin.

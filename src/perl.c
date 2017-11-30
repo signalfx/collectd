@@ -38,9 +38,7 @@
 
 #undef DONT_POISON_SPRINTF_YET
 
-#if HAVE_STDBOOL_H
 #include <stdbool.h>
-#endif
 
 #include <EXTERN.h>
 #include <perl.h>
@@ -263,12 +261,6 @@ struct {
                  {"Collectd::NOTIF_WARNING", NOTIF_WARNING},
                  {"Collectd::NOTIF_OKAY", NOTIF_OKAY},
                  {"", 0}};
-
-struct {
-  char name[64];
-  char *var;
-} g_strings[] = {{"Collectd::hostname_g", hostname_g}, {"", NULL}};
-
 /*
  * Helper functions for data type conversion.
  */
@@ -426,8 +418,6 @@ static int hv2value_list(pTHX_ HV *hash, value_list_t *vl) {
 
   if (NULL != (tmp = hv_fetch(hash, "host", 4, 0)))
     sstrncpy(vl->host, SvPV_nolen(*tmp), sizeof(vl->host));
-  else
-    sstrncpy(vl->host, hostname_g, sizeof(vl->host));
 
   if (NULL != (tmp = hv_fetch(hash, "plugin", 6, 0)))
     sstrncpy(vl->plugin, SvPV_nolen(*tmp), sizeof(vl->plugin));
@@ -496,7 +486,8 @@ static int av2data_set(pTHX_ AV *array, char *name, data_set_t *ds) {
  *   meta     => [ { name => <name>, value => <value> }, ... ]
  * }
  */
-static int av2notification_meta(pTHX_ AV *array, notification_meta_t **ret_meta) {
+static int av2notification_meta(pTHX_ AV *array,
+                                notification_meta_t **ret_meta) {
   notification_meta_t *tail = NULL;
 
   int len = av_len(array);
@@ -883,12 +874,12 @@ static int oconfig_item2hv(pTHX_ oconfig_item_t *ci, HV *hash) {
 static char *get_module_name(char *buf, size_t buf_len, const char *module) {
   int status = 0;
   if (base_name[0] == '\0')
-    status = ssnprintf(buf, buf_len, "%s", module);
+    status = snprintf(buf, buf_len, "%s", module);
   else
-    status = ssnprintf(buf, buf_len, "%s::%s", base_name, module);
+    status = snprintf(buf, buf_len, "%s::%s", base_name, module);
   if ((status < 0) || ((unsigned int)status >= buf_len))
-    return (NULL);
-  return (buf);
+    return NULL;
+  return buf;
 } /* char *get_module_name */
 
 /*
@@ -1627,18 +1618,19 @@ static void _plugin_register_generic_userdata(pTHX, int type,
       ret = plugin_register_flush("perl", perl_flush, /* user_data = */ NULL);
     }
 
-    if (0 == ret)
+    if (0 == ret) {
       ret = plugin_register_flush(pluginname, perl_flush, &userdata);
+    } else {
+      free(userdata.data);
+    }
   } else {
     ret = -1;
   }
 
   if (0 == ret)
     XSRETURN_YES;
-  else {
-    free(userdata.data);
+  else
     XSRETURN_EMPTY;
-  }
 } /* static void _plugin_register_generic_userdata ( ... ) */
 
 /*
@@ -2101,7 +2093,7 @@ static int perl_init(void) {
   /* Lock the base thread to avoid race conditions with c_ithread_create().
    * See https://github.com/collectd/collectd/issues/9 and
    *     https://github.com/collectd/collectd/issues/1706 for details.
-  */
+   */
   assert(aTHX == perl_threads->head->interp);
   pthread_mutex_lock(&perl_threads->mutex);
 
@@ -2192,7 +2184,7 @@ static void perl_log(int level, const char *msg, user_data_t *user_data) {
   /* Lock the base thread if this is not called from one of the read threads
    * to avoid race conditions with c_ithread_create(). See
    * https://github.com/collectd/collectd/issues/9 for details.
-  */
+   */
 
   if (aTHX == perl_threads->head->interp)
     pthread_mutex_lock(&perl_threads->mutex);
@@ -2351,14 +2343,25 @@ static int g_interval_set(pTHX_ SV *var, MAGIC *mg) {
   return 0;
 } /* static int g_interval_set (pTHX_ SV *, MAGIC *) */
 
-static MGVTBL g_pv_vtbl = {g_pv_get, g_pv_set, NULL, NULL, NULL, NULL, NULL
+static MGVTBL g_pv_vtbl = {g_pv_get,
+                           g_pv_set,
+                           NULL,
+                           NULL,
+                           NULL,
+                           NULL,
+                           NULL
 #if HAVE_PERL_STRUCT_MGVTBL_SVT_LOCAL
                            ,
                            NULL
 #endif
 };
-static MGVTBL g_interval_vtbl = {g_interval_get, g_interval_set, NULL, NULL,
-                                 NULL, NULL, NULL
+static MGVTBL g_interval_vtbl = {g_interval_get,
+                                 g_interval_set,
+                                 NULL,
+                                 NULL,
+                                 NULL,
+                                 NULL,
+                                 NULL
 #if HAVE_PERL_STRUCT_MGVTBL_SVT_LOCAL
                                  ,
                                  NULL
@@ -2392,6 +2395,11 @@ static void xs_init(pTHX) {
    * accessing any such variable (this is basically the same as using
    * tie() in Perl) */
   /* global strings */
+  struct {
+    char name[64];
+    char *var;
+  } g_strings[] = {{"Collectd::hostname_g", hostname_g}, {"", NULL}};
+
   for (int i = 0; '\0' != g_strings[i].name[0]; ++i) {
     tmp = get_sv(g_strings[i].name, 1);
     sv_magicext(tmp, NULL, PERL_MAGIC_ext, &g_pv_vtbl, g_strings[i].var, 0);
@@ -2499,7 +2507,7 @@ static int perl_config_loadplugin(pTHX_ oconfig_item_t *ci) {
 
   if (NULL == get_module_name(module_name, sizeof(module_name), value)) {
     log_err("Invalid module name %s", value);
-    return (1);
+    return 1;
   }
 
   if (0 != init_pi(perl_argc, perl_argv))
@@ -2618,6 +2626,12 @@ static int perl_config_plugin(pTHX_ oconfig_item_t *ci) {
   char *plugin;
   HV *config;
 
+  if (NULL == perl_threads) {
+    log_err("A `Plugin' block was encountered but no plugin was loaded yet. "
+            "Put the appropriate `LoadPlugin' option in front of it.");
+    return -1;
+  }
+
   dSP;
 
   if ((1 != ci->values_num) || (OCONFIG_TYPE_STRING != ci->values[0].type)) {
@@ -2719,5 +2733,3 @@ void module_register(void) {
   plugin_register_complex_config("perl", perl_config);
   return;
 } /* void module_register (void) */
-
-/* vim: set sw=4 ts=4 tw=78 noexpandtab : */

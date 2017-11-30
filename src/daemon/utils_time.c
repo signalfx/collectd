@@ -164,7 +164,7 @@ int format_rfc3339(char *buffer, size_t buffer_size, struct tm const *t_tm,
   size_left -= len;
 
   if (print_nano) {
-    if ((len = ssnprintf(pos, size_left, ".%09ld", nsec)) == 0)
+    if ((len = snprintf(pos, size_left, ".%09ld", nsec)) == 0)
       return ENOMEM;
     pos += len;
     size_left -= len;
@@ -240,5 +240,3 @@ int rfc3339nano_local(char *buffer, size_t buffer_size, cdtime_t t) /* {{{ */
 
   return format_rfc3339_local(buffer, buffer_size, t, 1);
 } /* }}} int rfc3339nano */
-
-/* vim: set sw=2 sts=2 et fdm=marker : */

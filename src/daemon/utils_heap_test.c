@@ -68,7 +68,7 @@ DEF_TEST(simple) {
   }
 
   c_heap_destroy(h);
-  return (0);
+  return 0;
 }
 
 int main(void) {
@@ -76,5 +76,3 @@ int main(void) {
 
   END_TEST;
 }
-
-/* vim: set sw=2 sts=2 et : */

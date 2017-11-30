@@ -44,6 +44,7 @@ struct metric_definition_s {
 typedef struct metric_definition_s metric_definition_t;
 
 struct instance_definition_s {
+  char *plugin_name;
   char *instance;
   char *path;
   cu_tail_t *tail;
@@ -67,7 +68,8 @@ static int tcsv_submit(instance_definition_t *id, metric_definition_t *md,
   vl.values_len = 1;
   vl.values = &v;
 
-  sstrncpy(vl.plugin, "tail_csv", sizeof(vl.plugin));
+  sstrncpy(vl.plugin, (id->plugin_name != NULL) ? id->plugin_name : "tail_csv",
+           sizeof(vl.plugin));
   if (id->instance != NULL)
     sstrncpy(vl.plugin_instance, id->instance, sizeof(vl.plugin_instance));
   sstrncpy(vl.type, md->type, sizeof(vl.type));
@@ -77,7 +79,7 @@ static int tcsv_submit(instance_definition_t *id, metric_definition_t *md,
   vl.time = t;
   vl.interval = id->interval;
 
-  return (plugin_dispatch_values(&vl));
+  return plugin_dispatch_values(&vl);
 }
 
 static cdtime_t parse_time(char const *tbuf) {
@@ -87,9 +89,9 @@ static cdtime_t parse_time(char const *tbuf) {
   errno = 0;
   t = strtod(tbuf, &endptr);
   if ((errno != 0) || (endptr == NULL) || (endptr[0] != 0))
-    return (cdtime());
+    return cdtime();
 
-  return (DOUBLE_TO_CDTIME_T(t));
+  return DOUBLE_TO_CDTIME_T(t);
 }
 
 static int tcsv_read_metric(instance_definition_t *id, metric_definition_t *md,
@@ -99,23 +101,23 @@ static int tcsv_read_metric(instance_definition_t *id, metric_definition_t *md,
   int status;
 
   if (md->data_source_type == -1)
-    return (EINVAL);
+    return EINVAL;
 
   assert(md->value_from >= 0);
   if (((size_t)md->value_from) >= fields_num)
-    return (EINVAL);
+    return EINVAL;
 
   status = parse_value(fields[md->value_from], &v, md->data_source_type);
   if (status != 0)
-    return (status);
+    return status;
 
   if (id->time_from >= 0) {
     if (((size_t)id->time_from) >= fields_num)
-      return (EINVAL);
+      return EINVAL;
     t = parse_time(fields[id->time_from]);
   }
 
-  return (tcsv_submit(id, md, v, t));
+  return tcsv_submit(id, md, v, t);
 }
 
 static _Bool tcsv_check_index(ssize_t index, size_t fields_num,
@@ -128,7 +130,7 @@ static _Bool tcsv_check_index(ssize_t index, size_t fields_num,
   ERROR("tail_csv plugin: Metric \"%s\": Request for index %zd when "
         "only %zu fields are available.",
         name, index, fields_num);
-  return (0);
+  return 0;
 }
 
 static int tcsv_read_buffer(instance_definition_t *id, char *buffer,
@@ -152,7 +154,7 @@ static int tcsv_read_buffer(instance_definition_t *id, char *buffer,
 
   /* Ignore empty lines. */
   if ((buffer_size == 0) || (buffer[0] == '#'))
-    return (0);
+    return 0;
 
   /* Count the number of fields. */
   metrics_num = 1;
@@ -165,14 +167,14 @@ static int tcsv_read_buffer(instance_definition_t *id, char *buffer,
     ERROR("tail_csv plugin: last line of `%s' does not contain "
           "enough values.",
           id->path);
-    return (-1);
+    return -1;
   }
 
   /* Create a list of all values */
   metrics = calloc(metrics_num, sizeof(*metrics));
   if (metrics == NULL) {
     ERROR("tail_csv plugin: calloc failed.");
-    return (ENOMEM);
+    return ENOMEM;
   }
 
   ptr = buffer;
@@ -201,7 +203,7 @@ static int tcsv_read_buffer(instance_definition_t *id, char *buffer,
 
   /* Free up resources */
   sfree(metrics);
-  return (0);
+  return 0;
 }
 
 static int tcsv_read(user_data_t *ud) {
@@ -212,7 +214,7 @@ static int tcsv_read(user_data_t *ud) {
     id->tail = cu_tail_create(id->path);
     if (id->tail == NULL) {
       ERROR("tail_csv plugin: cu_tail_create (\"%s\") failed.", id->path);
-      return (-1);
+      return -1;
     }
   }
 
@@ -226,7 +228,7 @@ static int tcsv_read(user_data_t *ud) {
       ERROR("tail_csv plugin: File \"%s\": cu_tail_readline failed "
             "with status %i.",
             id->path, status);
-      return (-1);
+      return -1;
     }
 
     buffer_len = strlen(buffer);
@@ -236,7 +238,7 @@ static int tcsv_read(user_data_t *ud) {
     tcsv_read_buffer(id, buffer, buffer_len);
   }
 
-  return (0);
+  return 0;
 }
 
 static void tcsv_metric_definition_destroy(void *arg) {
@@ -263,18 +265,18 @@ static int tcsv_config_get_index(oconfig_item_t *ci, ssize_t *ret_index) {
     WARNING("tail_csv plugin: The \"%s\" config option needs exactly one "
             "integer argument.",
             ci->key);
-    return (-1);
+    return -1;
   }
 
   if (ci->values[0].value.number < 0) {
     WARNING("tail_csv plugin: The \"%s\" config option must be positive "
             "(or zero).",
             ci->key);
-    return (-1);
+    return -1;
   }
 
   *ret_index = (ssize_t)ci->values[0].value.number;
-  return (0);
+  return 0;
 }
 
 /* Parse metric  */
@@ -284,7 +286,7 @@ static int tcsv_config_add_metric(oconfig_item_t *ci) {
 
   md = calloc(1, sizeof(*md));
   if (md == NULL)
-    return (-1);
+    return -1;
   md->name = NULL;
   md->type = NULL;
   md->instance = NULL;
@@ -295,7 +297,7 @@ static int tcsv_config_add_metric(oconfig_item_t *ci) {
   status = cf_util_get_string(ci, &md->name);
   if (status != 0) {
     sfree(md);
-    return (-1);
+    return -1;
   }
 
   for (int i = 0; i < ci->children_num; ++i) {
@@ -318,7 +320,7 @@ static int tcsv_config_add_metric(oconfig_item_t *ci) {
 
   if (status != 0) {
     tcsv_metric_definition_destroy(md);
-    return (-1);
+    return -1;
   }
 
   /* Verify all necessary options have been set. */
@@ -331,7 +333,7 @@ static int tcsv_config_add_metric(oconfig_item_t *ci) {
   }
   if (status != 0) {
     tcsv_metric_definition_destroy(md);
-    return (status);
+    return status;
   }
 
   if (metric_head == NULL)
@@ -344,7 +346,7 @@ static int tcsv_config_add_metric(oconfig_item_t *ci) {
     last->next = md;
   }
 
-  return (0);
+  return 0;
 }
 
 static void tcsv_instance_definition_destroy(void *arg) {
@@ -358,6 +360,7 @@ static void tcsv_instance_definition_destroy(void *arg) {
     cu_tail_destroy(id->tail);
   id->tail = NULL;
 
+  sfree(id->plugin_name);
   sfree(id->instance);
   sfree(id->path);
   sfree(id->metric_list);
@@ -373,14 +376,14 @@ static int tcsv_config_add_instance_collect(instance_definition_t *id,
   if (ci->values_num < 1) {
     WARNING("tail_csv plugin: The `Collect' config option needs at least one "
             "argument.");
-    return (-1);
+    return -1;
   }
 
   metric_list_size = id->metric_list_len + (size_t)ci->values_num;
   metric_list =
       realloc(id->metric_list, sizeof(*id->metric_list) * metric_list_size);
   if (metric_list == NULL)
-    return (-1);
+    return -1;
   id->metric_list = metric_list;
 
   for (int i = 0; i < ci->values_num; i++) {
@@ -406,7 +409,7 @@ static int tcsv_config_add_instance_collect(instance_definition_t *id,
     id->metric_list_len++;
   }
 
-  return (0);
+  return 0;
 }
 
 /* <File /> block */
@@ -419,7 +422,8 @@ static int tcsv_config_add_file(oconfig_item_t *ci) {
 
   id = calloc(1, sizeof(*id));
   if (id == NULL)
-    return (-1);
+    return -1;
+  id->plugin_name = NULL;
   id->instance = NULL;
   id->path = NULL;
   id->metric_list = NULL;
@@ -429,7 +433,7 @@ static int tcsv_config_add_file(oconfig_item_t *ci) {
   status = cf_util_get_string(ci, &id->path);
   if (status != 0) {
     sfree(id);
-    return (status);
+    return status;
   }
 
   /* Use default interval. */
@@ -447,6 +451,8 @@ static int tcsv_config_add_file(oconfig_item_t *ci) {
       cf_util_get_cdtime(option, &id->interval);
     else if (strcasecmp("TimeFrom", option->key) == 0)
       status = tcsv_config_get_index(option, &id->time_from);
+    else if (strcasecmp("Plugin", option->key) == 0)
+      status = cf_util_get_string(option, &id->plugin_name);
     else {
       WARNING("tail_csv plugin: Option `%s' not allowed here.", option->key);
       status = -1;
@@ -458,7 +464,7 @@ static int tcsv_config_add_file(oconfig_item_t *ci) {
 
   if (status != 0) {
     tcsv_instance_definition_destroy(id);
-    return (-1);
+    return -1;
   }
 
   /* Verify all necessary options have been set. */
@@ -472,10 +478,10 @@ static int tcsv_config_add_file(oconfig_item_t *ci) {
 
   if (status != 0) {
     tcsv_instance_definition_destroy(id);
-    return (-1);
+    return -1;
   }
 
-  ssnprintf(cb_name, sizeof(cb_name), "tail_csv/%s", id->path);
+  snprintf(cb_name, sizeof(cb_name), "tail_csv/%s", id->path);
 
   status = plugin_register_complex_read(
       NULL, cb_name, tcsv_read, id->interval,
@@ -484,11 +490,10 @@ static int tcsv_config_add_file(oconfig_item_t *ci) {
       });
   if (status != 0) {
     ERROR("tail_csv plugin: Registering complex read function failed.");
-    tcsv_instance_definition_destroy(id);
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 }
 
 /* Parse blocks */
@@ -504,7 +509,7 @@ static int tcsv_config(oconfig_item_t *ci) {
               child->key);
   }
 
-  return (0);
+  return 0;
 } /* int tcsv_config */
 
 static int tcsv_init(void) { /* {{{ */
@@ -512,7 +517,7 @@ static int tcsv_init(void) { /* {{{ */
   metric_definition_t *md;
 
   if (have_init)
-    return (0);
+    return 0;
 
   for (md = metric_head; md != NULL; md = md->next) {
     data_set_t const *ds;
@@ -536,14 +541,14 @@ static int tcsv_init(void) { /* {{{ */
     md->data_source_type = ds->ds->type;
   }
 
-  return (0);
+  return 0;
 } /* }}} int tcsv_init */
 
 static int tcsv_shutdown(void) {
   tcsv_metric_definition_destroy(metric_head);
   metric_head = NULL;
 
-  return (0);
+  return 0;
 }
 
 void module_register(void) {
@@ -551,5 +556,3 @@ void module_register(void) {
   plugin_register_init("tail_csv", tcsv_init);
   plugin_register_shutdown("tail_csv", tcsv_shutdown);
 }
-
-/* vim: set sw=4 sts=4 et : */

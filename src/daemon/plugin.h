@@ -36,25 +36,19 @@
 
 #include <pthread.h>
 
-#define PLUGIN_FLAGS_GLOBAL 0x0001
-
-#ifndef DATA_MAX_NAME_LEN
-#define DATA_MAX_NAME_LEN 1024
-#endif
-
 #define DS_TYPE_COUNTER 0
 #define DS_TYPE_GAUGE 1
 #define DS_TYPE_DERIVE 2
 #define DS_TYPE_ABSOLUTE 3
 
 #define DS_TYPE_TO_STRING(t)                                                   \
-  (t == DS_TYPE_COUNTER) ? "counter" : (t == DS_TYPE_GAUGE)                    \
-                                           ? "gauge"                           \
-                                           : (t == DS_TYPE_DERIVE)             \
-                                                 ? "derive"                    \
-                                                 : (t == DS_TYPE_ABSOLUTE)     \
-                                                       ? "absolute"            \
-                                                       : "unknown"
+  (t == DS_TYPE_COUNTER)                                                       \
+      ? "counter"                                                              \
+      : (t == DS_TYPE_GAUGE)                                                   \
+            ? "gauge"                                                          \
+            : (t == DS_TYPE_DERIVE)                                            \
+                  ? "derive"                                                   \
+                  : (t == DS_TYPE_ABSOLUTE) ? "absolute" : "unknown"
 
 #ifndef LOG_ERR
 #define LOG_ERR 3
@@ -226,7 +220,7 @@ void plugin_set_dir(const char *dir);
  *
  * ARGUMENTS
  *  `name'      Name of the plugin to load.
- *  `flags'     Hints on how to handle this plugin.
+ *  `global'    Make this plugins symbols available for other shared libraries.
  *
  * RETURN VALUE
  *  Returns zero upon success, a value greater than zero if no plugin was found
@@ -236,7 +230,7 @@ void plugin_set_dir(const char *dir);
  *  Re-loading an already loaded module is detected and zero is returned in
  *  this case.
  */
-int plugin_load(const char *name, uint32_t flags);
+int plugin_load(const char *name, _Bool global);
 
 int plugin_init_all(void);
 void plugin_read_all(void);

@@ -33,10 +33,6 @@
 #include <sys/sysctl.h>
 #endif
 
-#if HAVE_LIBHAL_H
-#include <libhal.h>
-#endif
-
 #define UUID_RAW_LENGTH 16
 #define UUID_PRINTABLE_COMPACT_LENGTH (UUID_RAW_LENGTH * 2)
 #define UUID_PRINTABLE_NORMAL_LENGTH (UUID_PRINTABLE_COMPACT_LENGTH + 4)
@@ -49,19 +45,19 @@ static int looks_like_a_uuid(const char *uuid) {
   int len;
 
   if (!uuid)
-    return (0);
+    return 0;
 
   len = strlen(uuid);
 
   if (len < UUID_PRINTABLE_COMPACT_LENGTH)
-    return (0);
+    return 0;
 
   while (*uuid) {
     if (!isxdigit((int)*uuid) && *uuid != '-')
-      return (0);
+      return 0;
     uuid++;
   }
-  return (1);
+  return 1;
 }
 
 static char *uuid_parse_dmidecode(FILE *file) {
@@ -86,9 +82,9 @@ static char *uuid_parse_dmidecode(FILE *file) {
     if (!looks_like_a_uuid(fields[1]))
       continue;
 
-    return (strdup(fields[1]));
+    return strdup(fields[1]);
   }
-  return (NULL);
+  return NULL;
 }
 
 static char *uuid_get_from_dmidecode(void) {
@@ -96,12 +92,12 @@ static char *uuid_get_from_dmidecode(void) {
   char *uuid;
 
   if (!dmidecode)
-    return (NULL);
+    return NULL;
 
   uuid = uuid_parse_dmidecode(dmidecode);
 
   pclose(dmidecode);
-  return (uuid);
+  return uuid;
 }
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)
@@ -110,7 +106,7 @@ static char *uuid_get_from_sysctlbyname(const char *name) {
   size_t len = sizeof(uuid);
   if (sysctlbyname(name, &uuid, &len, NULL, 0) == -1)
     return NULL;
-  return (strdup(uuid));
+  return strdup(uuid);
 }
 #elif defined(__OpenBSD__)
 static char *uuid_get_from_sysctl(void) {
@@ -123,53 +119,7 @@ static char *uuid_get_from_sysctl(void) {
 
   if (sysctl(mib, 2, uuid, &len, NULL, 0) == -1)
     return NULL;
-  return (strdup(uuid));
-}
-#endif
-
-#if HAVE_LIBHAL_H
-
-#define UUID_PATH "/org/freedesktop/Hal/devices/computer"
-#define UUID_PROPERTY "smbios.system.uuid"
-
-static char *uuid_get_from_hal(void) {
-  LibHalContext *ctx;
-
-  DBusError error;
-  DBusConnection *con;
-
-  dbus_error_init(&error);
-
-  if (!(con = dbus_bus_get(DBUS_BUS_SYSTEM, &error)))
-    goto bailout_nobus;
-
-  ctx = libhal_ctx_new();
-  libhal_ctx_set_dbus_connection(ctx, con);
-
-  if (!libhal_ctx_init(ctx, &error))
-    goto bailout;
-
-  if (!libhal_device_property_exists(ctx, UUID_PATH, UUID_PROPERTY, &error))
-    goto bailout;
-
-  char *uuid =
-      libhal_device_get_property_string(ctx, UUID_PATH, UUID_PROPERTY, &error);
-  if (looks_like_a_uuid(uuid))
-    return (uuid);
-
-bailout : {
-  DBusError ctxerror;
-  dbus_error_init(&ctxerror);
-  if (!(libhal_ctx_shutdown(ctx, &ctxerror)))
-    dbus_error_free(&ctxerror);
-}
-
-  libhal_ctx_free(ctx);
-
-bailout_nobus:
-  if (dbus_error_is_set(&error))
-    dbus_error_free(&error);
-  return (NULL);
+  return strdup(uuid);
 }
 #endif
 
@@ -179,16 +129,16 @@ static char *uuid_get_from_file(const char *path) {
 
   file = fopen(path, "r");
   if (file == NULL)
-    return (NULL);
+    return NULL;
 
   if (!fgets(uuid, sizeof(uuid), file)) {
     fclose(file);
-    return (NULL);
+    return NULL;
   }
   fclose(file);
   strstripnewline(uuid);
 
-  return (strdup(uuid));
+  return strdup(uuid);
 }
 
 static char *uuid_get_local(void) {
@@ -196,52 +146,47 @@ static char *uuid_get_local(void) {
 
   /* Check /etc/uuid / UUIDFile before any other method. */
   if ((uuid = uuid_get_from_file(uuidfile ? uuidfile : "/etc/uuid")) != NULL)
-    return (uuid);
+    return uuid;
 
 #if defined(__APPLE__)
   if ((uuid = uuid_get_from_sysctlbyname("kern.uuid")) != NULL)
-    return (uuid);
+    return uuid;
 #elif defined(__FreeBSD__)
   if ((uuid = uuid_get_from_sysctlbyname("kern.hostuuid")) != NULL)
-    return (uuid);
+    return uuid;
 #elif defined(__NetBSD__)
   if ((uuid = uuid_get_from_sysctlbyname("machdep.dmi.system-uuid")) != NULL)
-    return (uuid);
+    return uuid;
 #elif defined(__OpenBSD__)
   if ((uuid = uuid_get_from_sysctl()) != NULL)
-    return (uuid);
+    return uuid;
 #elif defined(__linux__)
   if ((uuid = uuid_get_from_file("/sys/class/dmi/id/product_uuid")) != NULL)
-    return (uuid);
-#endif
-
-#if HAVE_LIBHAL_H
-  if ((uuid = uuid_get_from_hal()) != NULL)
-    return (uuid);
+    return uuid;
 #endif
 
   if ((uuid = uuid_get_from_dmidecode()) != NULL)
-    return (uuid);
+    return uuid;
 
 #if defined(__linux__)
   if ((uuid = uuid_get_from_file("/sys/hypervisor/uuid")) != NULL)
-    return (uuid);
+    return uuid;
 #endif
 
-  return (NULL);
+  return NULL;
 }
 
 static int uuid_config(const char *key, const char *value) {
   if (strcasecmp(key, "UUIDFile") == 0) {
     char *tmp = strdup(value);
     if (tmp == NULL)
-      return (-1);
+      return -1;
     sfree(uuidfile);
     uuidfile = tmp;
-    return (0);
+    return 0;
   }
 
-  return (1);
+  return 1;
 }
 
 static int uuid_init(void) {
@@ -250,11 +195,11 @@ static int uuid_init(void) {
   if (uuid) {
     sstrncpy(hostname_g, uuid, DATA_MAX_NAME_LEN);
     sfree(uuid);
-    return (0);
+    return 0;
   }
 
   WARNING("uuid: could not read UUID using any known method");
-  return (0);
+  return 0;
 }
 
 void module_register(void) {
@@ -262,17 +207,3 @@ void module_register(void) {
                          STATIC_ARRAY_SIZE(config_keys));
   plugin_register_init("uuid", uuid_init);
 }
-
-/*
- * vim: set tabstop=4:
- * vim: set shiftwidth=4:
- * vim: set expandtab:
- */
-/*
- * Local variables:
- *  indent-tabs-mode: nil
- *  c-indent-level: 4
- *  c-basic-offset: 4
- *  tab-width: 4
- * End:
- */

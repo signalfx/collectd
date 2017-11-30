@@ -36,6 +36,10 @@
 
 #include <microhttpd.h>
 
+#include <netdb.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+
 #ifndef PROMETHEUS_DEFAULT_STALENESS_DELTA
 #define PROMETHEUS_DEFAULT_STALENESS_DELTA TIME_T_TO_CDTIME_T_STATIC(300)
 #endif
@@ -159,8 +163,8 @@ static char *format_labels(char *buffer, size_t buffer_size,
    * know that they are sane. */
   for (size_t i = 0; i < m->n_label; i++) {
     char value[LABEL_VALUE_SIZE];
-    ssnprintf(labels[i], LABEL_BUFFER_SIZE, "%s=\"%s\"", m->label[i]->name,
-              escape_label_value(value, sizeof(value), m->label[i]->value));
+    snprintf(labels[i], LABEL_BUFFER_SIZE, "%s=\"%s\"", m->label[i]->name,
+             escape_label_value(value, sizeof(value), m->label[i]->value));
   }
 
   strjoin(buffer, buffer_size, labels, m->n_label, ",");
@@ -178,13 +182,13 @@ static void format_text(ProtobufCBuffer *buffer) {
   while (c_avl_iterator_next(iter, (void *)&unused_name, (void *)&fam) == 0) {
     char line[1024]; /* 4x DATA_MAX_NAME_LEN? */
 
-    ssnprintf(line, sizeof(line), "# HELP %s %s\n", fam->name, fam->help);
+    snprintf(line, sizeof(line), "# HELP %s %s\n", fam->name, fam->help);
     buffer->append(buffer, strlen(line), (uint8_t *)line);
 
-    ssnprintf(line, sizeof(line), "# TYPE %s %s\n", fam->name,
-              (fam->type == IO__PROMETHEUS__CLIENT__METRIC_TYPE__GAUGE)
-                  ? "gauge"
-                  : "counter");
+    snprintf(line, sizeof(line), "# TYPE %s %s\n", fam->name,
+             (fam->type == IO__PROMETHEUS__CLIENT__METRIC_TYPE__GAUGE)
+                 ? "gauge"
+                 : "counter");
     buffer->append(buffer, strlen(line), (uint8_t *)line);
 
     for (size_t i = 0; i < fam->n_metric; i++) {
@@ -194,17 +198,17 @@ static void format_text(ProtobufCBuffer *buffer) {
 
       char timestamp_ms[24] = "";
       if (m->has_timestamp_ms)
-        ssnprintf(timestamp_ms, sizeof(timestamp_ms), " %" PRIi64,
-                  m->timestamp_ms);
+        snprintf(timestamp_ms, sizeof(timestamp_ms), " %" PRIi64,
+                 m->timestamp_ms);
 
       if (fam->type == IO__PROMETHEUS__CLIENT__METRIC_TYPE__GAUGE)
-        ssnprintf(line, sizeof(line), "%s{%s} " GAUGE_FORMAT "%s\n", fam->name,
-                  format_labels(labels, sizeof(labels), m), m->gauge->value,
-                  timestamp_ms);
+        snprintf(line, sizeof(line), "%s{%s} " GAUGE_FORMAT "%s\n", fam->name,
+                 format_labels(labels, sizeof(labels), m), m->gauge->value,
+                 timestamp_ms);
       else /* if (fam->type == IO__PROMETHEUS__CLIENT__METRIC_TYPE__COUNTER) */
-        ssnprintf(line, sizeof(line), "%s{%s} %.0f%s\n", fam->name,
-                  format_labels(labels, sizeof(labels), m), m->counter->value,
-                  timestamp_ms);
+        snprintf(line, sizeof(line), "%s{%s} %.0f%s\n", fam->name,
+                 format_labels(labels, sizeof(labels), m), m->counter->value,
+                 timestamp_ms);
 
       buffer->append(buffer, strlen(line), (uint8_t *)line);
     }
@@ -212,8 +216,8 @@ static void format_text(ProtobufCBuffer *buffer) {
   c_avl_iterator_destroy(iter);
 
   char server[1024];
-  ssnprintf(server, sizeof(server), "\n# collectd/write_prometheus %s at %s\n",
-            PACKAGE_VERSION, hostname_g);
+  snprintf(server, sizeof(server), "\n# collectd/write_prometheus %s at %s\n",
+           PACKAGE_VERSION, hostname_g);
   buffer->append(buffer, strlen(server), (uint8_t *)server);
 
   pthread_mutex_unlock(&metrics_lock);
@@ -631,7 +635,7 @@ metric_family_create(char *name, data_set_t const *ds, value_list_t const *vl,
   msg->name = name;
 
   char help[1024];
-  ssnprintf(
+  snprintf(
       help, sizeof(help),
       "write_prometheus plugin: '%s' Type: '%s', Dstype: '%s', Dsname: '%s'",
       vl->plugin, vl->type, DS_TYPE_TO_STRING(ds->ds[ds_index].type),
@@ -727,6 +731,100 @@ metric_family_get(data_set_t const *ds, value_list_t const *vl, size_t ds_index,
 }
 /* }}} */
 
+static void prom_logger(__attribute__((unused)) void *arg, char const *fmt,
+                        va_list ap) {
+  /* {{{ */
+  char errbuf[1024];
+  vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
+
+  ERROR("write_prometheus plugin: %s", errbuf);
+} /* }}} prom_logger */
+
+#if MHD_VERSION >= 0x00090000
+static int prom_open_socket(int addrfamily) {
+  /* {{{ */
+  char service[NI_MAXSERV];
+  snprintf(service, sizeof(service), "%hu", httpd_port);
+
+  struct addrinfo *res;
+  int status = getaddrinfo(NULL, service,
+                           &(struct addrinfo){
+                               .ai_flags = AI_PASSIVE | AI_ADDRCONFIG,
+                               .ai_family = addrfamily,
+                               .ai_socktype = SOCK_STREAM,
+                           },
+                           &res);
+  if (status != 0) {
+    return -1;
+  }
+
+  int fd = -1;
+  for (struct addrinfo *ai = res; ai != NULL; ai = ai->ai_next) {
+    fd = socket(ai->ai_family, ai->ai_socktype | SOCK_CLOEXEC, 0);
+    if (fd == -1)
+      continue;
+
+    if (bind(fd, ai->ai_addr, ai->ai_addrlen) != 0) {
+      close(fd);
+      fd = -1;
+      continue;
+    }
+
+    if (listen(fd, /* backlog = */ 16) != 0) {
+      close(fd);
+      fd = -1;
+      continue;
+    }
+
+    break;
+  }
+
+  freeaddrinfo(res);
+
+  return fd;
+} /* }}} int prom_open_socket */
+
+static struct MHD_Daemon *prom_start_daemon() {
+  /* {{{ */
+  int fd = prom_open_socket(PF_INET6);
+  if (fd == -1)
+    fd = prom_open_socket(PF_INET);
+  if (fd == -1) {
+    ERROR("write_prometheus plugin: Opening a listening socket failed.");
+    return NULL;
+  }
+
+  struct MHD_Daemon *d = MHD_start_daemon(
+      MHD_USE_THREAD_PER_CONNECTION | MHD_USE_DEBUG, httpd_port,
+      /* MHD_AcceptPolicyCallback = */ NULL,
+      /* MHD_AcceptPolicyCallback arg = */ NULL, http_handler, NULL,
+      MHD_OPTION_LISTEN_SOCKET, fd, MHD_OPTION_EXTERNAL_LOGGER, prom_logger,
+      NULL, MHD_OPTION_END);
+  if (d == NULL) {
+    ERROR("write_prometheus plugin: MHD_start_daemon() failed.");
+    close(fd);
+    return NULL;
+  }
+
+  return d;
+} /* }}} struct MHD_Daemon *prom_start_daemon */
+#else /* if MHD_VERSION < 0x00090000 */
+static struct MHD_Daemon *prom_start_daemon() {
+  /* {{{ */
+  struct MHD_Daemon *d = MHD_start_daemon(
+      MHD_USE_THREAD_PER_CONNECTION | MHD_USE_DEBUG, httpd_port,
+      /* MHD_AcceptPolicyCallback = */ NULL,
+      /* MHD_AcceptPolicyCallback arg = */ NULL, http_handler, NULL,
+      MHD_OPTION_EXTERNAL_LOGGER, prom_logger, NULL, MHD_OPTION_END);
+  if (d == NULL) {
+    ERROR("write_prometheus plugin: MHD_start_daemon() failed.");
+    return NULL;
+  }
+
+  return d;
+} /* }}} struct MHD_Daemon *prom_start_daemon */
+#endif
+
 /*
  * collectd callbacks
  */
@@ -760,15 +858,7 @@ static int prom_init() {
   }
 
   if (httpd == NULL) {
-    unsigned int flags = MHD_USE_THREAD_PER_CONNECTION;
-#if MHD_VERSION >= 0x00093300
-    flags |= MHD_USE_DUAL_STACK;
-#endif
-
-    httpd = MHD_start_daemon(flags, httpd_port,
-                             /* MHD_AcceptPolicyCallback = */ NULL,
-                             /* MHD_AcceptPolicyCallback arg = */ NULL,
-                             http_handler, NULL, MHD_OPTION_END);
+    httpd = prom_start_daemon();
     if (httpd == NULL) {
       ERROR("write_prometheus plugin: MHD_start_daemon() failed.");
       return -1;
@@ -875,5 +965,3 @@ void module_register() {
                           /* user data = */ NULL);
   plugin_register_shutdown("write_prometheus", prom_shutdown);
 }
-
-/* vim: set sw=2 sts=2 et fdm=marker : */

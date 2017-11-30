@@ -21,12 +21,16 @@
  *   Benjamin Gilbert <bgilbert at backtick.net>
  **/
 
-#include <lvm2app.h>
-
 #include "collectd.h"
 
 #include "common.h"
 #include "plugin.h"
+
+#include <lvm2app.h>
+
+#ifdef HAVE_SYS_CAPABILITY_H
+#include <sys/capability.h>
+#endif /* HAVE_SYS_CAPABILITY_H */
 
 #define NO_VALUE UINT64_MAX
 #define PERCENT_SCALE_FACTOR 1e-8
@@ -77,8 +81,7 @@ static void report_lv_utilization(lv_t lv, char const *vg_name,
     return;
   used_bytes = lv_size * (used_percent_unscaled * PERCENT_SCALE_FACTOR);
 
-  ssnprintf(plugin_instance, sizeof(plugin_instance), "%s-%s", vg_name,
-            lv_name);
+  snprintf(plugin_instance, sizeof(plugin_instance), "%s-%s", vg_name, lv_name);
   lvm_submit(plugin_instance, "used", used_bytes);
   lvm_submit(plugin_instance, "free", lv_size - used_bytes);
 }
@@ -156,14 +159,14 @@ static int lvm_read(void) {
   lvm = lvm_init(NULL);
   if (!lvm) {
     ERROR("lvm plugin: lvm_init failed.");
-    return (-1);
+    return -1;
   }
 
   vg_names = lvm_list_vg_names(lvm);
   if (!vg_names) {
     ERROR("lvm plugin lvm_list_vg_name failed %s", lvm_errmsg(lvm));
     lvm_quit(lvm);
-    return (-1);
+    return -1;
   }
 
   dm_list_iterate_items(name_list, vg_names) {
@@ -181,9 +184,27 @@ static int lvm_read(void) {
   }
 
   lvm_quit(lvm);
-  return (0);
+  return 0;
 } /*lvm_read */
 
+static int c_lvm_init(void) {
+#if defined(HAVE_SYS_CAPABILITY_H) && defined(CAP_SYS_ADMIN)
+  if (check_capability(CAP_SYS_ADMIN) != 0) {
+    if (getuid() == 0)
+      WARNING("lvm plugin: Running collectd as root, but the "
+              "CAP_SYS_ADMIN capability is missing. The plugin's read "
+              "function will probably fail. Is your init system dropping "
+              "capabilities?");
+    else
+      WARNING("lvm plugin: collectd doesn't have the CAP_SYS_ADMIN "
+              "capability. If you don't want to run collectd as root, try "
+              "running \"setcap cap_sys_admin=ep\" on the collectd binary.");
+  }
+#endif
+  return 0;
+}
+
 void module_register(void) {
+  plugin_register_init("lvm", c_lvm_init);
   plugin_register_read("lvm", lvm_read);
 } /* void module_register */
