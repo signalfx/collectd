@@ -2737,6 +2737,9 @@ fi
 %doc contrib/
 
 %changelog
+* Thu Dec 07 2017 SignalFx <support+rpm@signalfx.com> 5.8.0-sfx0
+- Package for 5.8.0
+
 * Thu Sep 28 2017 xakru <calvinxakru@gmail.com> - 5.7.1-8
 - Add new libcollectdclient/network_parse
 - Add new libcollectdclient/server
