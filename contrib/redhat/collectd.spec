@@ -2816,7 +2816,7 @@ fi
 * Sat Jun 04 2016 Ruben Kerkhof <ruben@rubenkerkhof.com> 5.5.1-1
 - New upstream version
 
-* Thu Feb 26 2016 SignalFx <support+rpm@signalfx.com> 5.5.1-sfx0
+* Fri Feb 26 2016 SignalFx <support+rpm@signalfx.com> 5.5.1-sfx0
 - Package for 5.5.1
 
 * Thu Jan 07 2016 SignalFx <support+rpm@signalfx.com> 5.5.0-sfx7
