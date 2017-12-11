@@ -151,7 +151,7 @@ static int config_add(oconfig_item_t *ci) {
   if (status == 0) {
     char callback_name[3 * DATA_MAX_NAME_LEN];
 
-    ssnprintf(callback_name, sizeof(callback_name), "nginx/%s/%s",
+    snprintf(callback_name, sizeof(callback_name), "nginx/%s/%s",
               (st->host != NULL) ? st->host : hostname_g,
               (st->name != NULL) ? st->name : "default");
 
@@ -223,7 +223,7 @@ static int init_host(nginx_t *st) /* {{{ */
     static char credentials[1024];
     int status;
 
-    status = ssnprintf(credentials, sizeof(credentials), "%s:%s", st->user,
+    status = snprintf(credentials, sizeof(credentials), "%s:%s", st->user,
                        (st->pass == NULL) ? "" : st->pass);
     if ((status < 0) || ((size_t)status >= sizeof(credentials))) {
       ERROR("nginx plugin: init_host: Returning an error "
