@@ -69,6 +69,7 @@
 #define TYPE_VALUES 0x0006
 #define TYPE_INTERVAL 0x0007
 #define TYPE_INTERVAL_HR 0x0009
+#define TYPE_DS_NAME 0x000a
 
 /* Types to transmit notifications */
 #define TYPE_MESSAGE 0x0100

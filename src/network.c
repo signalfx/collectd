@@ -266,6 +266,8 @@ static int network_config_ttl = 0;
 static size_t network_config_packet_size = 1452;
 static _Bool network_config_forward = 0;
 static _Bool network_config_stats = 0;
+static _Bool network_config_send_ds_names = 0;
+static _Bool network_config_disable_buffering = 0;
 
 static sockent_t *sending_sockets = NULL;
 
@@ -2550,35 +2552,35 @@ static int add_to_buffer(char *buffer, size_t buffer_size, /* {{{ */
                          const value_list_t *vl) {
   char *buffer_orig = buffer;
 
-  if (strcmp(vl_def->host, vl->host) != 0) {
+  if (network_config_disable_buffering || strcmp(vl_def->host, vl->host) != 0) {
     if (write_part_string(&buffer, &buffer_size, TYPE_HOST, vl->host,
                           strlen(vl->host)) != 0)
       return -1;
     sstrncpy(vl_def->host, vl->host, sizeof(vl_def->host));
   }
 
-  if (vl_def->time != vl->time) {
+  if (network_config_disable_buffering || vl_def->time != vl->time) {
     if (write_part_number(&buffer, &buffer_size, TYPE_TIME_HR,
                           (uint64_t)vl->time))
       return -1;
     vl_def->time = vl->time;
   }
 
-  if (vl_def->interval != vl->interval) {
+  if (network_config_disable_buffering || vl_def->interval != vl->interval) {
     if (write_part_number(&buffer, &buffer_size, TYPE_INTERVAL_HR,
                           (uint64_t)vl->interval))
       return -1;
     vl_def->interval = vl->interval;
   }
 
-  if (strcmp(vl_def->plugin, vl->plugin) != 0) {
+  if (network_config_disable_buffering || strcmp(vl_def->plugin, vl->plugin) != 0) {
     if (write_part_string(&buffer, &buffer_size, TYPE_PLUGIN, vl->plugin,
                           strlen(vl->plugin)) != 0)
       return -1;
     sstrncpy(vl_def->plugin, vl->plugin, sizeof(vl_def->plugin));
   }
 
-  if (strcmp(vl_def->plugin_instance, vl->plugin_instance) != 0) {
+  if (network_config_disable_buffering || strcmp(vl_def->plugin_instance, vl->plugin_instance) != 0) {
     if (write_part_string(&buffer, &buffer_size, TYPE_PLUGIN_INSTANCE,
                           vl->plugin_instance,
                           strlen(vl->plugin_instance)) != 0)
@@ -2587,19 +2589,27 @@ static int add_to_buffer(char *buffer, size_t buffer_size, /* {{{ */
              sizeof(vl_def->plugin_instance));
   }
 
-  if (strcmp(vl_def->type, vl->type) != 0) {
+  if (network_config_disable_buffering || strcmp(vl_def->type, vl->type) != 0) {
     if (write_part_string(&buffer, &buffer_size, TYPE_TYPE, vl->type,
                           strlen(vl->type)) != 0)
       return -1;
     sstrncpy(vl_def->type, ds->type, sizeof(vl_def->type));
   }
 
-  if (strcmp(vl_def->type_instance, vl->type_instance) != 0) {
+  if (network_config_disable_buffering || strcmp(vl_def->type_instance, vl->type_instance) != 0) {
     if (write_part_string(&buffer, &buffer_size, TYPE_TYPE_INSTANCE,
                           vl->type_instance, strlen(vl->type_instance)) != 0)
       return -1;
     sstrncpy(vl_def->type_instance, vl->type_instance,
              sizeof(vl_def->type_instance));
+  }
+
+  if (network_config_send_ds_names) {
+    for (int i=0; i<vl->values_len; i++) {
+        if (write_part_string(&buffer, &buffer_size, TYPE_DS_NAME,
+                              ds->ds[i].name, strlen(ds->ds[i].name)) != 0)
+          return -1;
+    }
   }
 
   if (write_part_values(&buffer, &buffer_size, ds, vl) != 0)
@@ -2661,7 +2671,7 @@ static int network_write(const data_set_t *ds, const value_list_t *vl,
     send_buffer_last_update = cdtime();
 
     stats_values_sent++;
-  } else {
+  } else if (!network_config_disable_buffering) {
     flush_buffer();
 
     status =
@@ -2680,7 +2690,7 @@ static int network_write(const data_set_t *ds, const value_list_t *vl,
   if (status < 0) {
     ERROR("network plugin: Unable to append to the "
           "buffer for some weird reason");
-  } else if ((network_config_packet_size - send_buffer_fill) < 15) {
+  } else if (network_config_disable_buffering || (network_config_packet_size - send_buffer_fill) < 15) {
     flush_buffer();
   }
 
@@ -2935,6 +2945,10 @@ static int network_config(oconfig_item_t *ci) /* {{{ */
       /* Handled earlier */
     } else if (strcasecmp("MaxPacketSize", child->key) == 0)
       network_config_set_buffer_size(child);
+    else if (strcasecmp("SendDSNames", child->key) == 0)
+      cf_util_get_boolean(child, &network_config_send_ds_names);
+    else if (strcasecmp("DisableBuffering", child->key) == 0)
+      cf_util_get_boolean(child, &network_config_disable_buffering);
     else if (strcasecmp("Forward", child->key) == 0)
       cf_util_get_boolean(child, &network_config_forward);
     else if (strcasecmp("ReportStats", child->key) == 0)
