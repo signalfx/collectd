@@ -148,6 +148,7 @@ typedef struct {
   char *service;
 
   int ref_cnt;
+  _Bool report_host;
 } c_psql_database_t;
 
 static const char *const def_queries[] = {
@@ -260,6 +261,8 @@ static c_psql_database_t *c_psql_database_new(const char *name) {
   db->service = NULL;
 
   db->ref_cnt = 0;
+  db->report_host = 1;
+
   return db;
 } /* c_psql_database_new */
 
@@ -540,7 +543,8 @@ static int c_psql_exec_query(c_psql_database_t *db, udb_query_t *q,
 
   if (C_PSQL_IS_UNIX_DOMAIN_SOCKET(db->host) ||
       (0 == strcmp(db->host, "127.0.0.1")) ||
-      (0 == strcmp(db->host, "localhost")))
+      (0 == strcmp(db->host, "localhost")) ||
+      (db->report_host == 0))
     host = hostname_g;
   else
     host = db->host;
@@ -1167,6 +1171,8 @@ static int c_psql_config_database(oconfig_item_t *ci) {
       cf_util_get_cdtime(c, &db->commit_interval);
     else if (strcasecmp("ExpireDelay", c->key) == 0)
       cf_util_get_cdtime(c, &db->expire_delay);
+    else if (strcasecmp("ReportHost", c->key) == 0)
+      cf_util_get_boolean(c, &db->report_host);
     else
       log_warn("Ignoring unknown config key \"%s\".", c->key);
   }
@@ -1242,16 +1248,25 @@ static int c_psql_config(oconfig_item_t *ci) {
     oconfig_item_t *c;
 
     have_def_config = 1;
+    char *config_path = C_PSQL_DEFAULT_CONF;
+    for (int i = 0; i < ci->children_num; ++i) {
+      oconfig_item_t *c = ci->children + i;
+      if (0 == strcasecmp(c->key, "DefaultQueryConfigPath")){
+        if ( c->values_num > 0)
+          config_path = c->values[0].value.string;
+        break;
+      }
+    }
 
-    c = oconfig_parse_file(C_PSQL_DEFAULT_CONF);
+    c = oconfig_parse_file(config_path);
     if (NULL == c)
-      log_err("Failed to read default config (" C_PSQL_DEFAULT_CONF ").");
+      log_err("Failed to read default config (\"%s\").", config_path);
     else
       c_psql_config(c);
 
     if (NULL == queries)
-      log_err("Default config (" C_PSQL_DEFAULT_CONF ") did not define "
-              "any queries - please check your installation.");
+      log_err("Default config (\"%s\") did not define "
+              "any queries - please check your installation.", config_path);
   }
 
   for (int i = 0; i < ci->children_num; ++i) {
@@ -1264,7 +1279,7 @@ static int c_psql_config(oconfig_item_t *ci) {
       c_psql_config_writer(c);
     else if (0 == strcasecmp(c->key, "Database"))
       c_psql_config_database(c);
-    else
+    else if (0 != strcasecmp(c->key, "DefaultQueryConfigPath"))
       log_warn("Ignoring unknown config key \"%s\".", c->key);
   }
   return 0;
