@@ -148,6 +148,7 @@ typedef struct {
   char *service;
 
   int ref_cnt;
+  _Bool report_host;
 } c_psql_database_t;
 
 static const char *const def_queries[] = {
@@ -260,6 +261,8 @@ static c_psql_database_t *c_psql_database_new(const char *name) {
   db->service = NULL;
 
   db->ref_cnt = 0;
+  db->report_host = 1;
+
   return db;
 } /* c_psql_database_new */
 
@@ -540,7 +543,8 @@ static int c_psql_exec_query(c_psql_database_t *db, udb_query_t *q,
 
   if (C_PSQL_IS_UNIX_DOMAIN_SOCKET(db->host) ||
       (0 == strcmp(db->host, "127.0.0.1")) ||
-      (0 == strcmp(db->host, "localhost")))
+      (0 == strcmp(db->host, "localhost")) ||
+      (db->report_host == 0))
     host = hostname_g;
   else
     host = db->host;
@@ -1167,6 +1171,8 @@ static int c_psql_config_database(oconfig_item_t *ci) {
       cf_util_get_cdtime(c, &db->commit_interval);
     else if (strcasecmp("ExpireDelay", c->key) == 0)
       cf_util_get_cdtime(c, &db->expire_delay);
+    else if (strcasecmp("ReportHost", c->key) == 0)
+      cf_util_get_boolean(c, &db->report_host);
     else
       log_warn("Ignoring unknown config key \"%s\".", c->key);
   }
