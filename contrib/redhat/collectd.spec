@@ -2737,6 +2737,9 @@ fi
 %doc contrib/
 
 %changelog
+* Tue Jun 19 2018 SignalFx <support+rpm@signalfx.com> 5.8.0-sfx1
+- Added build support for amazonlinux201803
+
 * Thu Dec 07 2017 SignalFx <support+rpm@signalfx.com> 5.8.0-sfx0
 - Package for 5.8.0
 
