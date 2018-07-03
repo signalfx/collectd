@@ -54,6 +54,7 @@ class GenericJMXConfConnection
   private String _instance_prefix = null;
   private String _instance_suffix = null;
   private String _service_url = null;
+  private String _plugin_name = null;
   private JMXConnector _jmx_connector = null;
   private MBeanServerConnection _mbean_connection = null;
   private List<GenericJMXConfMBean> _mbeans = null;
@@ -245,6 +246,12 @@ class GenericJMXConfConnection
           this._mbeans.add (mbean);
         }
       }
+      else if (child.getKey ().equalsIgnoreCase ("Plugin"))
+      {
+          String tmp = getConfigString (child);
+          if (tmp != null)
+            this._plugin_name = tmp;
+      }
       else
         throw (new IllegalArgumentException ("Unknown option: "
               + child.getKey ()));
@@ -274,7 +281,8 @@ class GenericJMXConfConnection
     pd = new PluginData ();
     pd.setHost (this.getHost ());
 
-    pd.setPlugin ("GenericJMX");
+    // Use provided plugin name if applicable
+    pd.setPlugin (this._plugin_name == null ? "GenericJMX" : this._plugin_name);
 
     for (int i = 0; i < this._mbeans.size (); i++)
     {
