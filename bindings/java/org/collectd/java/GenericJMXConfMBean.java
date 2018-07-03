@@ -47,6 +47,7 @@ class GenericJMXConfMBean
   private String _instance_prefix;
   private List<String> _instance_from;
   private List<GenericJMXConfValue> _values;
+  private List<String> _dimensions;
 
   private String getConfigString (OConfigItem ci) /* {{{ */
   {
@@ -97,6 +98,7 @@ class GenericJMXConfMBean
     this._instance_prefix = null;
     this._instance_from = new ArrayList<String> ();
     this._values = new ArrayList<GenericJMXConfValue> ();
+    this._dimensions = new ArrayList<String> ();
 
     children = ci.getChildren ();
     iter = children.iterator ();
@@ -140,6 +142,12 @@ class GenericJMXConfMBean
 
         cv = new GenericJMXConfValue (child);
         this._values.add (cv);
+      }
+      else if (child.getKey ().equalsIgnoreCase ("Dimension"))
+      {
+        String tmp = getConfigString (child);
+        if (tmp != null)
+          this._dimensions.add(tmp);
       }
       else
         throw (new IllegalArgumentException ("Unknown option: "
@@ -188,11 +196,13 @@ class GenericJMXConfMBean
       PluginData   pd_tmp;
       List<String> instanceList;
       StringBuffer instance;
+      List<String> dimensions;
 
       objName      = iter.next ();
       pd_tmp       = new PluginData (pd);
       instanceList = new ArrayList<String> ();
       instance     = new StringBuffer ();
+      dimensions   = new ArrayList<String> ();
 
       Collectd.logDebug ("GenericJMXConfMBean: objName = "
           + objName.toString ());
@@ -232,7 +242,31 @@ class GenericJMXConfMBean
         instance.append(instance_suffix);
       }
 
-      pd_tmp.setPluginInstance (instance.toString ());
+      for (int i = 0; i < this._dimensions.size (); i++)
+      {
+        String dimensionName;
+        String dimensionValue;
+
+        dimensionName = this._instance_from.get (i);
+        dimensionValue = objName.getKeyProperty (dimensionName);
+        if (dimensionValue == null)
+        {
+          Collectd.logError ("GenericJMXConfMBean: "
+              + "No such property in object name: " + dimensionName);
+        }
+        else
+        {
+          dimensions.add (dimensionName + "=" + dimensionValue);
+        }
+      }
+
+      /*
+       * Append dimensions on to plugin instance in following format
+       *                   [dim1=val1,dim2=val2]
+       */
+
+      String pluginInstance = instance.toString() + "[" + join(",", dimensions) + "]";
+      pd_tmp.setPluginInstance (pluginInstance);
 
       Collectd.logDebug ("GenericJMXConfMBean: instance = " + instance.toString ());
 
@@ -242,6 +276,22 @@ class GenericJMXConfMBean
 
     return (0);
   } /* }}} void query */
+
+  private String join (String separator, List<String> list) /* {{{ */
+  {
+    StringBuffer sb;
+
+    sb = new StringBuffer ();
+
+    for (int i = 0; i < list.size (); i++)
+    {
+      if (i > 0)
+        sb.append (separator);
+      sb.append (list.get (i));
+    }
+
+    return (sb.toString ());
+  } /* }}} String join */
 }
 
 /* vim: set sw=2 sts=2 et fdm=marker : */
