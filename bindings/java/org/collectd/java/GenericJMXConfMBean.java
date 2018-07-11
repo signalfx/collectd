@@ -247,7 +247,7 @@ class GenericJMXConfMBean
         String dimensionName;
         String dimensionValue;
 
-        dimensionName = this._instance_from.get (i);
+        dimensionName = this._dimensions.get (i);
         dimensionValue = objName.getKeyProperty (dimensionName);
         if (dimensionValue == null)
         {
