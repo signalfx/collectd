@@ -168,7 +168,7 @@ class GenericJMXConfMBean
   } /* }}} */
 
   public int query (MBeanServerConnection conn, PluginData pd, /* {{{ */
-      String instance_prefix, String instance_suffix)
+      String instance_prefix, String monitor_id)
   {
     Set<ObjectName> names;
     Iterator<ObjectName> iter;
@@ -238,10 +238,6 @@ class GenericJMXConfMBean
         instance.append (instanceList.get (i));
       }
 
-      if (instance_suffix != null) {
-        instance.append(instance_suffix);
-      }
-
       for (int i = 0; i < this._dimensions.size (); i++)
       {
         String dimensionName;
@@ -259,6 +255,9 @@ class GenericJMXConfMBean
           dimensions.add (dimensionName + "=" + dimensionValue);
         }
       }
+
+      // Add monitorID required by the SignalFx Agent
+      dimensions.add("monitorID=" + monitor_id);
 
       /*
        * Append dimensions on to plugin instance in following format

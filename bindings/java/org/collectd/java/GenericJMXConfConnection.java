@@ -52,7 +52,7 @@ class GenericJMXConfConnection
   private String _host = null;
   private String _service_name = null;
   private String _instance_prefix = null;
-  private String _instance_suffix = null;
+  private String _monitor_id = null;
   private String _service_url = null;
   private String _plugin_name = null;
   private JMXConnector _jmx_connector = null;
@@ -224,11 +224,12 @@ class GenericJMXConfConnection
         if (tmp != null)
           this._instance_prefix = tmp;
       }
-      else if (child.getKey ().equalsIgnoreCase ("InstanceSuffix"))
+      // Only used internally
+      else if (child.getKey ().equalsIgnoreCase ("MonitorId"))
       {
         String tmp = getConfigString (child);
         if (tmp != null)
-          this._instance_suffix = tmp;
+          this._monitor_id = tmp;
       }
       else if (child.getKey ().equalsIgnoreCase ("Collect"))
       {
@@ -289,7 +290,7 @@ class GenericJMXConfConnection
       int status;
 
       status = this._mbeans.get (i).query (this._mbean_connection, pd,
-          this._instance_prefix, this._instance_suffix);
+          this._instance_prefix, this._monitor_id);
       if (status != 0)
       {
         disconnect ();
