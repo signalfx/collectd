@@ -47,6 +47,7 @@ class GenericJMXConfMBean
   private String _instance_prefix;
   private List<String> _instance_from;
   private List<GenericJMXConfValue> _values;
+  private List<String> _dimensions;
 
   private String getConfigString (OConfigItem ci) /* {{{ */
   {
@@ -97,6 +98,7 @@ class GenericJMXConfMBean
     this._instance_prefix = null;
     this._instance_from = new ArrayList<String> ();
     this._values = new ArrayList<GenericJMXConfValue> ();
+    this._dimensions = new ArrayList<String> ();
 
     children = ci.getChildren ();
     iter = children.iterator ();
@@ -160,7 +162,7 @@ class GenericJMXConfMBean
   } /* }}} */
 
   public int query (MBeanServerConnection conn, PluginData pd, /* {{{ */
-      String instance_prefix, String instance_suffix)
+      String instance_prefix, String monitor_id)
   {
     Set<ObjectName> names;
     Iterator<ObjectName> iter;
@@ -188,11 +190,13 @@ class GenericJMXConfMBean
       PluginData   pd_tmp;
       List<String> instanceList;
       StringBuffer instance;
+      List<String> dimensions;
 
       objName      = iter.next ();
       pd_tmp       = new PluginData (pd);
       instanceList = new ArrayList<String> ();
       instance     = new StringBuffer ();
+      dimensions   = new ArrayList<String> ();
 
       Collectd.logDebug ("GenericJMXConfMBean: objName = "
           + objName.toString ());
@@ -228,11 +232,13 @@ class GenericJMXConfMBean
         instance.append (instanceList.get (i));
       }
 
-      if (instance_suffix != null) {
-        instance.append(instance_suffix);
-      }
+      //TODO (Akash): Add support to pick MBean properties as dimensions
 
-      pd_tmp.setPluginInstance (instance.toString ());
+      // Add monitorID required by the SignalFx Agent
+      dimensions.add("monitorID=" + monitor_id);
+
+      String pluginInstance = instance.toString() + "[" + join(",", dimensions) + "]";
+      pd_tmp.setPluginInstance (pluginInstance);
 
       Collectd.logDebug ("GenericJMXConfMBean: instance = " + instance.toString ());
 
@@ -242,6 +248,22 @@ class GenericJMXConfMBean
 
     return (0);
   } /* }}} void query */
+
+  private String join (String separator, List<String> list) /* {{{ */
+  {
+    StringBuffer sb;
+
+    sb = new StringBuffer ();
+
+    for (int i = 0; i < list.size (); i++)
+    {
+      if (i > 0)
+        sb.append (separator);
+      sb.append (list.get (i));
+    }
+
+    return (sb.toString ());
+   } /* }}} String join */
 }
 
 /* vim: set sw=2 sts=2 et fdm=marker : */
