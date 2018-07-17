@@ -85,7 +85,7 @@ class GenericJMXConfValue
     if (obj instanceof String)
     {
       String str = (String) obj;
-      
+
       try
       {
         if (ds_type == DataSource.TYPE_GAUGE)
@@ -420,7 +420,7 @@ class GenericJMXConfValue
     for (int i = 0; i < list.size (); i++)
     {
       if (i > 0)
-        sb.append ("-");
+        sb.append (separator);
       sb.append (list.get (i));
     }
 
