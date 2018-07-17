@@ -143,6 +143,12 @@ class GenericJMXConfMBean
         cv = new GenericJMXConfValue (child);
         this._values.add (cv);
       }
+      else if (child.getKey ().equalsIgnoreCase ("Dimension"))
+      {
+        String tmp = getConfigString (child);
+        if (tmp != null)
+          this._dimensions.add(tmp);
+      }
       else
         throw (new IllegalArgumentException ("Unknown option: "
               + child.getKey ()));
@@ -232,10 +238,31 @@ class GenericJMXConfMBean
         instance.append (instanceList.get (i));
       }
 
-      //TODO (Akash): Add support to pick MBean properties as dimensions
+      for (int i = 0; i < this._dimensions.size (); i++)
+      {
+        String dimensionName;
+        String dimensionValue;
+
+        dimensionName = this._dimensions.get (i);
+        dimensionValue = objName.getKeyProperty (dimensionName);
+        if (dimensionValue == null)
+        {
+          Collectd.logError ("GenericJMXConfMBean: "
+              + "No such property in object name: " + dimensionName);
+        }
+        else
+        {
+          dimensions.add (dimensionName + "=" + dimensionValue);
+        }
+      }
 
       // Add monitorID required by the SignalFx Agent
       dimensions.add("monitorID=" + monitor_id);
+
+      /*
+       * Append dimensions on to plugin instance in following format
+       *                   [dim1=val1,dim2=val2]
+       */
 
       String pluginInstance = instance.toString() + "[" + join(",", dimensions) + "]";
       pd_tmp.setPluginInstance (pluginInstance);
