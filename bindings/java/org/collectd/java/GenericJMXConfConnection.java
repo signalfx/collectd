@@ -58,6 +58,7 @@ class GenericJMXConfConnection
   private JMXConnector _jmx_connector = null;
   private MBeanServerConnection _mbean_connection = null;
   private List<GenericJMXConfMBean> _mbeans = null;
+  private Map<String, String> _custom_dimensions = new HashMap<>();
 
   /*
    * private methods
@@ -85,6 +86,35 @@ class GenericJMXConfConnection
 
     return (v.getString ());
   } /* }}} String getConfigString */
+
+
+  private Map<String, String> getConfigStringPair (OConfigItem ci) /* {{{ */
+  {
+    List<OConfigValue> values;
+    OConfigValue key;
+    OConfigValue val;
+
+    values = ci.getValues ();
+    if (values.size () != 2)
+    {
+      Collectd.logError ("GenericJMXConfConnection: The " + ci.getKey ()
+          + " configuration option needs exactly two string arguments.");
+      return (null);
+    }
+
+    key = values.get (0);
+    val = values.get (1);
+    if (key.getType () != OConfigValue.OCONFIG_TYPE_STRING || val.getType () != OConfigValue.OCONFIG_TYPE_STRING)
+    {
+      Collectd.logError ("GenericJMXConfConnection: The " + ci.getKey ()
+          + " configuration option needs exactly two string arguments.");
+      return (null);
+    }
+
+    Map<String, String> out = new HashMap<>();
+    out.put(key.getString(), val.getString());
+    return (out);
+  } /* }}} Map<String, String> getConfigStringPair */
 
   private String getHost () /* {{{ */
   {
@@ -230,6 +260,12 @@ class GenericJMXConfConnection
         if (tmp != null)
           this._monitor_id = tmp;
       }
+      else if (child.getKey ().equalsIgnoreCase ("CustomDimension"))
+      {
+        Map<String, String> tmp = getConfigStringPair (child);
+        if (tmp != null)
+          this._custom_dimensions.putAll(tmp);
+      }
       else if (child.getKey ().equalsIgnoreCase ("Collect"))
       {
         String tmp = getConfigString (child);
@@ -289,7 +325,7 @@ class GenericJMXConfConnection
       int status;
 
       status = this._mbeans.get (i).query (this._mbean_connection, pd,
-          this._instance_prefix, this._monitor_id);
+          this._instance_prefix, this._monitor_id, this._custom_dimensions);
       if (status != 0)
       {
         disconnect ();
@@ -298,7 +334,8 @@ class GenericJMXConfConnection
     } /* for */
   } /* }}} void query */
 
-  public String toString ()
+  @Override
+public String toString ()
   {
     return (new String ("host = " + this._host + "; "
           + "url = " + this._service_url));
