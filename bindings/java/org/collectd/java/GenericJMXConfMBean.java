@@ -169,7 +169,7 @@ class GenericJMXConfMBean
   } /* }}} */
 
   public int query (MBeanServerConnection conn, PluginData pd, /* {{{ */
-      String instance_prefix, String monitor_id, Map<String, String> custom_dimensions)
+      String instance_prefix, Map<String, String> custom_dimensions)
   {
     Set<ObjectName> names;
     Iterator<ObjectName> iter;
@@ -256,9 +256,6 @@ class GenericJMXConfMBean
           dimensions.add (dimensionName + "=" + dimensionValue);
         }
       }
-
-      // Add monitorID required by the SignalFx Agent
-      dimensions.add("monitorID=" + monitor_id);
 
       // Add other connection level custom dimensions
       if (custom_dimensions != null) {

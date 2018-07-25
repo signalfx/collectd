@@ -52,7 +52,6 @@ class GenericJMXConfConnection
   private String _host = null;
   private String _service_name = null;
   private String _instance_prefix = null;
-  private String _monitor_id = null;
   private String _service_url = null;
   private String _plugin_name = null;
   private JMXConnector _jmx_connector = null;
@@ -254,12 +253,6 @@ class GenericJMXConfConnection
         if (tmp != null)
           this._instance_prefix = tmp;
       }
-      else if (child.getKey ().equalsIgnoreCase ("MonitorId"))
-      {
-        String tmp = getConfigString (child);
-        if (tmp != null)
-          this._monitor_id = tmp;
-      }
       else if (child.getKey ().equalsIgnoreCase ("CustomDimension"))
       {
         Map<String, String> tmp = getConfigStringPair (child);
@@ -325,7 +318,7 @@ class GenericJMXConfConnection
       int status;
 
       status = this._mbeans.get (i).query (this._mbean_connection, pd,
-          this._instance_prefix, this._monitor_id, this._custom_dimensions);
+          this._instance_prefix, this._custom_dimensions);
       if (status != 0)
       {
         disconnect ();
