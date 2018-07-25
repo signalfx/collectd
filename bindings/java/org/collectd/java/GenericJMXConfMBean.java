@@ -269,7 +269,7 @@ class GenericJMXConfMBean
        *                   [dim1=val1,dim2=val2]
        */
 
-      String pluginInstance = instance.toString() + "[" + join(",", dimensions) + "]";
+      String pluginInstance = instance.toString() + "[" + GenericJMXUtils.join(",", dimensions) + "]";
       pd_tmp.setPluginInstance (pluginInstance);
 
       Collectd.logDebug ("GenericJMXConfMBean: instance = " + instance.toString ());
@@ -280,22 +280,6 @@ class GenericJMXConfMBean
 
     return (0);
   } /* }}} void query */
-
-  private String join (String separator, List<String> list) /* {{{ */
-  {
-    StringBuffer sb;
-
-    sb = new StringBuffer ();
-
-    for (int i = 0; i < list.size (); i++)
-    {
-      if (i > 0)
-        sb.append (separator);
-      sb.append (list.get (i));
-    }
-
-    return (sb.toString ());
-   } /* }}} String join */
 }
 
 /* vim: set sw=2 sts=2 et fdm=marker : */

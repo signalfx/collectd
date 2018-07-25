@@ -411,22 +411,6 @@ class GenericJMXConfValue
     }
   } /* }}} Object queryAttribute */
 
-  private String join (String separator, List<String> list) /* {{{ */
-  {
-    StringBuffer sb;
-
-    sb = new StringBuffer ();
-
-    for (int i = 0; i < list.size (); i++)
-    {
-      if (i > 0)
-        sb.append (separator);
-      sb.append (list.get (i));
-    }
-
-    return (sb.toString ());
-  } /* }}} String join */
-
   private String getConfigString (OConfigItem ci) /* {{{ */
   {
     List<OConfigValue> values;
@@ -629,9 +613,9 @@ class GenericJMXConfValue
 
     if (this._instance_prefix != null)
       instancePrefix = new String (this._instance_prefix
-          + join ("-", instanceList));
+          + GenericJMXUtils.join ("-", instanceList));
     else
-      instancePrefix = join ("-", instanceList);
+      instancePrefix = GenericJMXUtils.join ("-", instanceList);
 
     /*
      * Build a list of `Object's which is then passed to `submitTable' and
