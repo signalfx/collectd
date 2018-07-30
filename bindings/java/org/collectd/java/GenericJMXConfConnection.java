@@ -52,11 +52,12 @@ class GenericJMXConfConnection
   private String _host = null;
   private String _service_name = null;
   private String _instance_prefix = null;
-  private String _instance_suffix = null;
   private String _service_url = null;
+  private String _plugin_name = null;
   private JMXConnector _jmx_connector = null;
   private MBeanServerConnection _mbean_connection = null;
   private List<GenericJMXConfMBean> _mbeans = null;
+  private Map<String, String> _custom_dimensions = new HashMap<>();
 
   /*
    * private methods
@@ -84,6 +85,35 @@ class GenericJMXConfConnection
 
     return (v.getString ());
   } /* }}} String getConfigString */
+
+
+  private Map<String, String> getConfigStringPair (OConfigItem ci) /* {{{ */
+  {
+    List<OConfigValue> values;
+    OConfigValue key;
+    OConfigValue val;
+
+    values = ci.getValues ();
+    if (values.size () != 2)
+    {
+      Collectd.logError ("GenericJMXConfConnection: The " + ci.getKey ()
+          + " configuration option needs exactly two string arguments.");
+      return (null);
+    }
+
+    key = values.get (0);
+    val = values.get (1);
+    if (key.getType () != OConfigValue.OCONFIG_TYPE_STRING || val.getType () != OConfigValue.OCONFIG_TYPE_STRING)
+    {
+      Collectd.logError ("GenericJMXConfConnection: The " + ci.getKey ()
+          + " configuration option needs exactly two string arguments.");
+      return (null);
+    }
+
+    Map<String, String> out = new HashMap<>();
+    out.put(key.getString(), val.getString());
+    return (out);
+  } /* }}} Map<String, String> getConfigStringPair */
 
   private String getHost () /* {{{ */
   {
@@ -223,11 +253,11 @@ class GenericJMXConfConnection
         if (tmp != null)
           this._instance_prefix = tmp;
       }
-      else if (child.getKey ().equalsIgnoreCase ("InstanceSuffix"))
+      else if (child.getKey ().equalsIgnoreCase ("CustomDimension"))
       {
-        String tmp = getConfigString (child);
+        Map<String, String> tmp = getConfigStringPair (child);
         if (tmp != null)
-          this._instance_suffix = tmp;
+          this._custom_dimensions.putAll(tmp);
       }
       else if (child.getKey ().equalsIgnoreCase ("Collect"))
       {
@@ -244,6 +274,12 @@ class GenericJMXConfConnection
           Collectd.logDebug ("GenericJMXConfConnection: " + this._host + ": Add " + tmp);
           this._mbeans.add (mbean);
         }
+      }
+      else if (child.getKey ().equalsIgnoreCase ("Plugin"))
+      {
+          String tmp = getConfigString (child);
+          if (tmp != null)
+            this._plugin_name = tmp;
       }
       else
         throw (new IllegalArgumentException ("Unknown option: "
@@ -274,14 +310,15 @@ class GenericJMXConfConnection
     pd = new PluginData ();
     pd.setHost (this.getHost ());
 
-    pd.setPlugin ("GenericJMX");
+    // Use provided plugin name if applicable
+    pd.setPlugin (this._plugin_name == null ? "GenericJMX" : this._plugin_name);
 
     for (int i = 0; i < this._mbeans.size (); i++)
     {
       int status;
 
       status = this._mbeans.get (i).query (this._mbean_connection, pd,
-          this._instance_prefix, this._instance_suffix);
+          this._instance_prefix, this._custom_dimensions);
       if (status != 0)
       {
         disconnect ();
@@ -290,7 +327,8 @@ class GenericJMXConfConnection
     } /* for */
   } /* }}} void query */
 
-  public String toString ()
+  @Override
+public String toString ()
   {
     return (new String ("host = " + this._host + "; "
           + "url = " + this._service_url));

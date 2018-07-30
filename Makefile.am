@@ -2051,6 +2051,7 @@ dist_noinst_JAVA = \
 	bindings/java/org/collectd/java/GenericJMXConfConnection.java \
 	bindings/java/org/collectd/java/GenericJMXConfMBean.java \
 	bindings/java/org/collectd/java/GenericJMXConfValue.java \
+	bindings/java/org/collectd/java/GenericJMXUtils.java \
 	bindings/java/org/collectd/java/JMXMemory.java
 
 collectd-api.jar: $(JAVA_TIMESTAMP_FILE)
