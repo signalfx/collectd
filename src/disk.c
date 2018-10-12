@@ -694,7 +694,9 @@ static int disk_read(void) {
 
     numfields = strsplit(buffer, fields, 32);
 
-    if ((numfields != (14 + fieldshift)) && (numfields != 7))
+    /* need either 7 fields (partition)
+     * or at least 14 fields (15 on Linux 2.4) */
+    if ((numfields != 7) && (numfields < (14 + fieldshift)))
       continue;
 
     minor = atoll(fields[1]);
@@ -728,7 +730,8 @@ static int disk_read(void) {
       read_sectors = atoll(fields[4]);
       write_ops = atoll(fields[5]);
       write_sectors = atoll(fields[6]);
-    } else if (numfields == (14 + fieldshift)) {
+    } else {
+      assert(numfields >= (14 + fieldshift));
       read_ops = atoll(fields[3 + fieldshift]);
       write_ops = atoll(fields[7 + fieldshift]);
 
@@ -747,9 +750,6 @@ static int disk_read(void) {
         io_time = atof(fields[12 + fieldshift]);
         weighted_time = atof(fields[13 + fieldshift]);
       }
-    } else {
-      DEBUG("numfields = %i; => unknown file format.", numfields);
-      continue;
     }
 
     {
